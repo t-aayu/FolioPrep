@@ -1,6 +1,8 @@
 package com.example
 
+import com.example.data.local.McqQuestionEntity
 import com.example.domain.QuestionMode
+import com.example.domain.QuestionShareHelper
 import com.example.domain.TextChunker
 import com.example.domain.UpscPromptBuilder
 import com.example.domain.UpscSubjects
@@ -123,5 +125,26 @@ class ExampleUnitTest {
         val chunks = TextChunker.chunkText(longText)
         assertTrue(chunks.size >= 2)
         assertTrue(chunks.all { it.wordCount <= TextChunker.MAX_WORDS_PER_CHUNK })
+    }
+
+    @Test
+    fun share_helper_formats_question_and_all_four_options() {
+        val mcq = McqQuestionEntity(
+            deckId = 1L,
+            question = "Consider the following statements:\n1. Statement A.\n2. Statement B.",
+            optionA = "1 only",
+            optionB = "2 only",
+            optionC = "Both 1 and 2",
+            optionD = "Neither 1 nor 2",
+            correctIndex = 2,
+            explanation = "Both are correct.",
+            orderIndex = 0
+        )
+        val formatted = QuestionShareHelper.formatQuestionWithOptions(3, mcq)
+        assertTrue(formatted.startsWith("Q3. Consider the following statements:\n1. Statement A.\n2. Statement B."))
+        assertTrue(formatted.contains("A. 1 only"))
+        assertTrue(formatted.contains("B. 2 only"))
+        assertTrue(formatted.contains("C. Both 1 and 2"))
+        assertTrue(formatted.contains("D. Neither 1 nor 2"))
     }
 }

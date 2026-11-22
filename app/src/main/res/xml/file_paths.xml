@@ -3,4 +3,7 @@
     <cache-path
         name="ocr_captures"
         path="ocr_captures/" />
+    <cache-path
+        name="shared_questions"
+        path="shared_questions/" />
 </paths>

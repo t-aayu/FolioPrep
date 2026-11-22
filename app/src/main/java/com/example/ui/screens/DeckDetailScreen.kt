@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Quiz
@@ -55,8 +56,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DeckDetailBundle
+import com.example.data.local.McqQuestionEntity
 import com.example.data.local.QuizAttemptEntity
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -67,6 +70,7 @@ import java.util.Locale
 fun DeckDetailScreen(
     bundle: DeckDetailBundle?,
     onBack: () -> Unit,
+    onStartQuickSolve: (deckId: Long, startIndex: Int) -> Unit,
     onStartPractice: (Long) -> Unit,
     onStartTimedExam: (deckId: Long, durationMinutes: Int, negativeFactor: Double) -> Unit,
     onStartSubjectiveFlashcards: (Long) -> Unit
@@ -177,6 +181,19 @@ fun DeckDetailScreen(
                 }
 
                 if (bundle.mcqs.isNotEmpty()) {
+                    item(key = "quick_solve_mode") {
+                        StudyModeActionCard(
+                            icon = Icons.Outlined.Bolt,
+                            title = "Just Solve",
+                            subtitle = "${bundle.mcqs.size} MCQ${if (bundle.mcqs.size > 1) "s" else ""} · Solve directly with instant answer check & explanation — no timer or score log",
+                            badge = "QUICK SOLVE",
+                            accentContainer = MaterialTheme.colorScheme.secondaryContainer,
+                            accentContent = MaterialTheme.colorScheme.onSecondaryContainer,
+                            testTag = "launch_quick_solve_mode",
+                            onClick = { onStartQuickSolve(deck.id, 0) }
+                        )
+                    }
+
                     item(key = "practice_mode") {
                         StudyModeActionCard(
                             icon = Icons.Outlined.Quiz,
@@ -215,6 +232,27 @@ fun DeckDetailScreen(
                             accentContent = MaterialTheme.colorScheme.onSecondaryContainer,
                             testTag = "launch_mains_flashcards",
                             onClick = { onStartSubjectiveFlashcards(deck.id) }
+                        )
+                    }
+                }
+
+                if (bundle.mcqs.isNotEmpty()) {
+                    item(key = "solve_individual_header") {
+                        Text(
+                            text = "Solve a Specific Question (${bundle.mcqs.size})",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+
+                    items(
+                        items = bundle.mcqs.mapIndexed { idx, mcq -> idx to mcq },
+                        key = { (_, mcq) -> "pick_mcq_${mcq.id}" }
+                    ) { (index, mcq) ->
+                        QuickPickQuestionRow(
+                            questionNumber = index + 1,
+                            mcq = mcq,
+                            onClick = { onStartQuickSolve(deck.id, index) }
                         )
                     }
                 }
@@ -325,6 +363,58 @@ private fun StudyModeActionCard(
                 imageVector = Icons.Outlined.PlayArrow,
                 contentDescription = "Start $title",
                 tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickPickQuestionRow(
+    questionNumber: Int,
+    mcq: McqQuestionEntity,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("quick_solve_question_$questionNumber")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    text = "Q$questionNumber",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = mcq.question.replace("\n", " "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Outlined.PlayArrow,
+                contentDescription = "Solve question $questionNumber",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
             )
         }
     }

@@ -45,6 +45,7 @@ import com.example.R
 import com.example.ui.screens.DeckDetailScreen
 import com.example.ui.screens.ImportPreviewScreen
 import com.example.ui.screens.LibraryScreen
+import com.example.ui.screens.McqSessionMode
 import com.example.ui.screens.McqSessionScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.StudioScreen
@@ -57,11 +58,13 @@ object Routes {
     const val SETTINGS = "settings"
     const val IMPORT_PREVIEW = "import_preview"
     const val DECK_DETAIL = "deck/{deckId}"
+    const val QUICK_SOLVE = "quick_solve/{deckId}/{startIndex}"
     const val PRACTICE = "practice/{deckId}"
     const val TIMED_EXAM = "timed_exam/{deckId}/{durationMinutes}/{negativeFactor}"
     const val FLASHCARDS = "flashcards/{deckId}"
 
     fun deckDetail(deckId: Long) = "deck/$deckId"
+    fun quickSolve(deckId: Long, startIndex: Int = 0) = "quick_solve/$deckId/$startIndex"
     fun practice(deckId: Long) = "practice/$deckId"
     fun timedExam(deckId: Long, durationMinutes: Int, negativeFactor: Double) =
         "timed_exam/$deckId/$durationMinutes/$negativeFactor"
@@ -328,6 +331,9 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                             DeckDetailScreen(
                                 bundle = bundle,
                                 onBack = { navController.popBackStack() },
+                                onStartQuickSolve = { id, startIdx ->
+                                    navController.navigate(Routes.quickSolve(id, startIdx))
+                                },
                                 onStartPractice = { id -> navController.navigate(Routes.practice(id)) },
                                 onStartTimedExam = { id, mins, neg ->
                                     navController.navigate(Routes.timedExam(id, mins, neg))
@@ -335,6 +341,27 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 onStartSubjectiveFlashcards = { id ->
                                     navController.navigate(Routes.flashcards(id))
                                 }
+                            )
+                        }
+
+                        composable(
+                            route = Routes.QUICK_SOLVE,
+                            arguments = listOf(
+                                navArgument("deckId") { type = NavType.LongType },
+                                navArgument("startIndex") { type = NavType.IntType }
+                            )
+                        ) { entry ->
+                            val deckId = entry.arguments?.getLong("deckId") ?: -1L
+                            val startIndex = entry.arguments?.getInt("startIndex") ?: 0
+                            val detailFlow = remember(deckId) { viewModel.observeDeckDetail(deckId) }
+                            val bundle by detailFlow.collectAsStateWithLifecycle(initialValue = null)
+
+                            McqSessionScreen(
+                                bundle = bundle,
+                                sessionMode = McqSessionMode.QUICK_SOLVE,
+                                initialQuestionIndex = startIndex,
+                                onBack = { navController.popBackStack() },
+                                onShowMessage = viewModel::showToast
                             )
                         }
 
@@ -348,10 +375,11 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
 
                             McqSessionScreen(
                                 bundle = bundle,
-                                isTimedExam = false,
+                                sessionMode = McqSessionMode.PRACTICE,
                                 durationMinutes = 15,
                                 negativeFactor = 0.0,
                                 onBack = { navController.popBackStack() },
+                                onShowMessage = viewModel::showToast,
                                 onCompleteAttempt = viewModel::recordQuizAttempt
                             )
                         }
@@ -372,10 +400,11 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
 
                             McqSessionScreen(
                                 bundle = bundle,
-                                isTimedExam = true,
+                                sessionMode = McqSessionMode.TIMED_EXAM,
                                 durationMinutes = durationMinutes,
                                 negativeFactor = negativeFactor,
                                 onBack = { navController.popBackStack() },
+                                onShowMessage = viewModel::showToast,
                                 onCompleteAttempt = viewModel::recordQuizAttempt
                             )
                         }

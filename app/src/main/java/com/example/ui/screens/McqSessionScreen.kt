@@ -27,17 +27,22 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -46,6 +51,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,22 +63,33 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DeckDetailBundle
 import com.example.data.local.McqQuestionEntity
+import com.example.domain.QuestionShareHelper
 import kotlinx.coroutines.delay
 import java.util.Locale
+
+enum class McqSessionMode {
+    QUICK_SOLVE,
+    PRACTICE,
+    TIMED_EXAM
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun McqSessionScreen(
     bundle: DeckDetailBundle?,
-    isTimedExam: Boolean,
-    durationMinutes: Int,
-    negativeFactor: Double,
+    sessionMode: McqSessionMode,
+    initialQuestionIndex: Int = 0,
+    durationMinutes: Int = 15,
+    negativeFactor: Double = 0.0,
     onBack: () -> Unit,
+    onShowMessage: (String) -> Unit = {},
     onCompleteAttempt: (
         deckId: Long,
         mode: String,
@@ -84,21 +101,32 @@ fun McqSessionScreen(
         netScore: Double,
         maxScore: Double,
         durationSeconds: Int
-    ) -> Unit
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _ -> }
 ) {
+    val context = LocalContext.current
+    val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val isTimedExam = sessionMode == McqSessionMode.TIMED_EXAM
+    val isQuickSolve = sessionMode == McqSessionMode.QUICK_SOLVE
     val mcqs = bundle?.mcqs.orEmpty()
     val deckId = bundle?.deck?.id ?: -1L
     val marksPerCorrect = 2.0
 
-    var currentIndex by remember(deckId) { mutableIntStateOf(0) }
-    val selectedAnswers = remember(deckId) { mutableStateMapOf<Int, Int>() }
-    var isFinished by remember(deckId) { mutableStateOf(false) }
-    var elapsedSeconds by remember(deckId) { mutableIntStateOf(0) }
+    var currentIndex by remember(deckId, initialQuestionIndex) {
+        mutableIntStateOf(initialQuestionIndex.coerceAtLeast(0))
+    }
+    val selectedAnswers = remember(deckId, sessionMode) { mutableStateMapOf<Int, Int>() }
+    var isFinished by remember(deckId, sessionMode) { mutableStateOf(false) }
+    var elapsedSeconds by remember(deckId, sessionMode) { mutableIntStateOf(0) }
     var remainingSeconds by remember(deckId, durationMinutes) {
         mutableIntStateOf((durationMinutes * 60).coerceAtLeast(60))
     }
+    var showShareSheet by remember { mutableStateOf(false) }
 
     fun finalizeSession() {
+        if (isQuickSolve) {
+            onBack()
+            return
+        }
         if (isFinished || mcqs.isEmpty() || deckId <= 0L) return
         isFinished = true
         var correct = 0
@@ -129,8 +157,8 @@ fun McqSessionScreen(
         )
     }
 
-    LaunchedEffect(deckId, isTimedExam, isFinished, mcqs.size) {
-        if (mcqs.isEmpty() || isFinished) return@LaunchedEffect
+    LaunchedEffect(deckId, sessionMode, isFinished, mcqs.size) {
+        if (mcqs.isEmpty() || isFinished || isQuickSolve) return@LaunchedEffect
         while (!isFinished) {
             delay(1000L)
             elapsedSeconds++
@@ -150,7 +178,11 @@ fun McqSessionScreen(
                 title = {
                     Column {
                         Text(
-                            text = if (isTimedExam) "Timed Prelims Exam" else "Prelims Practice",
+                            text = when (sessionMode) {
+                                McqSessionMode.QUICK_SOLVE -> "Quick Solve"
+                                McqSessionMode.PRACTICE -> "Prelims Practice"
+                                McqSessionMode.TIMED_EXAM -> "Timed Prelims Exam"
+                            },
                             style = MaterialTheme.typography.titleMedium
                         )
                         if (bundle != null) {
@@ -248,8 +280,9 @@ fun McqSessionScreen(
             return@Scaffold
         }
 
-        val currentQuestion = mcqs[currentIndex.coerceIn(0, mcqs.lastIndex)]
-        val chosenOption = selectedAnswers[currentIndex]
+        val safeIndex = currentIndex.coerceIn(0, mcqs.lastIndex)
+        val currentQuestion = mcqs[safeIndex]
+        val chosenOption = selectedAnswers[safeIndex]
         val showInstantFeedback = !isTimedExam && chosenOption != null
 
         Box(
@@ -271,7 +304,7 @@ fun McqSessionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Question ${currentIndex + 1} of ${mcqs.size}",
+                        text = "Question ${safeIndex + 1} of ${mcqs.size}",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -286,7 +319,7 @@ fun McqSessionScreen(
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 LinearProgressIndicator(
-                    progress = { (currentIndex + 1).toFloat() / mcqs.size.toFloat() },
+                    progress = { (safeIndex + 1).toFloat() / mcqs.size.toFloat() },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -300,7 +333,7 @@ fun McqSessionScreen(
                 ) {
                     mcqs.indices.forEach { idx ->
                         val answered = selectedAnswers.containsKey(idx)
-                        val isCurrent = idx == currentIndex
+                        val isCurrent = idx == safeIndex
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = when {
@@ -384,9 +417,9 @@ fun McqSessionScreen(
                                 .clip(MaterialTheme.shapes.medium)
                                 .clickable(enabled = isTimedExam || chosenOption == null) {
                                     if (isTimedExam && chosenOption == optIndex) {
-                                        selectedAnswers.remove(currentIndex)
+                                        selectedAnswers.remove(safeIndex)
                                     } else {
-                                        selectedAnswers[currentIndex] = optIndex
+                                        selectedAnswers[safeIndex] = optIndex
                                     }
                                 }
                                 .testTag("mcq_option_$optIndex")
@@ -438,6 +471,48 @@ fun McqSessionScreen(
                         }
                     }
 
+                    // Share Question Button right below options A, B, C, D
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = { showShareSheet = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .minimumInteractiveComponentSize()
+                                .testTag("share_question_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Share Question")
+                        }
+
+                        if (isQuickSolve && chosenOption != null) {
+                            FilledTonalButton(
+                                onClick = { selectedAnswers.remove(safeIndex) },
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("quick_solve_retry_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Try Again")
+                            }
+                        }
+                    }
+
                     AnimatedVisibility(visible = showInstantFeedback) {
                         Surface(
                             shape = MaterialTheme.shapes.large,
@@ -482,8 +557,8 @@ fun McqSessionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
-                        onClick = { currentIndex = (currentIndex - 1).coerceAtLeast(0) },
-                        enabled = currentIndex > 0,
+                        onClick = { currentIndex = (safeIndex - 1).coerceAtLeast(0) },
+                        enabled = safeIndex > 0,
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -491,9 +566,9 @@ fun McqSessionScreen(
                         Text("Prev")
                     }
 
-                    if (currentIndex < mcqs.lastIndex) {
+                    if (safeIndex < mcqs.lastIndex) {
                         Button(
-                            onClick = { currentIndex++ },
+                            onClick = { currentIndex = safeIndex + 1 },
                             modifier = Modifier
                                 .weight(1.2f)
                                 .testTag("mcq_next_button")
@@ -511,12 +586,18 @@ fun McqSessionScreen(
                         ) {
                             Icon(Icons.Outlined.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (isTimedExam) "Submit Exam" else "Finish")
+                            Text(
+                                when (sessionMode) {
+                                    McqSessionMode.QUICK_SOLVE -> "Done"
+                                    McqSessionMode.PRACTICE -> "Finish"
+                                    McqSessionMode.TIMED_EXAM -> "Submit Exam"
+                                }
+                            )
                         }
                     }
                 }
 
-                if (isTimedExam && currentIndex < mcqs.lastIndex) {
+                if (isTimedExam && safeIndex < mcqs.lastIndex) {
                     TextButton(
                         onClick = { finalizeSession() },
                         modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -524,6 +605,130 @@ fun McqSessionScreen(
                         Text("Submit Early (${selectedAnswers.size}/${mcqs.size} answered)")
                     }
                 }
+            }
+        }
+
+        if (showShareSheet) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = { showShareSheet = false },
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Share Question #${safeIndex + 1}",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Copy the question with options A–D as text, or capture a clean screenshot card to share directly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    ShareQuestionOptionRow(
+                        icon = Icons.Outlined.ContentCopy,
+                        title = "Copy Question & Options",
+                        subtitle = "Copies the question stem with options A, B, C, and D to clipboard",
+                        testTag = "share_copy_question_option",
+                        onClick = {
+                            QuestionShareHelper.copyQuestionToClipboard(
+                                context = context,
+                                questionNumber = safeIndex + 1,
+                                question = currentQuestion
+                            )
+                            showShareSheet = false
+                            onShowMessage("Question #${safeIndex + 1} and options copied to clipboard")
+                        }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    ShareQuestionOptionRow(
+                        icon = Icons.Outlined.PhotoCamera,
+                        title = "Share Screenshot of Question",
+                        subtitle = "Captures the full question and options A–D as a shareable image",
+                        testTag = "share_screenshot_question_option",
+                        onClick = {
+                            showShareSheet = false
+                            val result = QuestionShareHelper.shareQuestionScreenshot(
+                                context = context,
+                                deckTitle = bundle?.deck?.title.orEmpty(),
+                                questionNumber = safeIndex + 1,
+                                question = currentQuestion,
+                                isDarkTheme = isDarkTheme
+                            )
+                            result.onFailure {
+                                onShowMessage("Unable to create question screenshot: ${it.message ?: "error"}")
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShareQuestionOptionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .minimumInteractiveComponentSize()
+            .testTag(testTag)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(42.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
