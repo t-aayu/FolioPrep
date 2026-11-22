@@ -1,11 +1,14 @@
 package com.example
 
 import com.example.data.local.McqQuestionEntity
+import com.example.data.local.SubjectiveCardEntity
+import com.example.data.local.serializeKeyPoints
 import com.example.domain.QuestionMode
 import com.example.domain.QuestionShareHelper
 import com.example.domain.TextChunker
 import com.example.domain.UpscPromptBuilder
 import com.example.domain.UpscSubjects
+import com.example.viewmodel.LibraryCategory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -229,5 +232,43 @@ class ExampleUnitTest {
         assertTrue(formatted.contains("Correct Answer: B. 2 only"))
         assertTrue(formatted.contains("Article 280 constitutes the Finance Commission."))
         assertTrue(formatted.contains("Statement 2 accurately describes its mandate."))
+    }
+
+    @Test
+    fun share_helper_formats_mains_flashcard_10_and_15_marker() {
+        val card10 = SubjectiveCardEntity(
+            deckId = 1L,
+            question = "Examine the role of the Finance Commission in strengthening cooperative federalism.",
+            marks = 10,
+            intro = "Article 280 establishes the Finance Commission as a quasi-judicial body for vertical and horizontal devolution.",
+            pointsSerialized = serializeKeyPoints(
+                listOf(
+                    "Balances fiscal capacity with equity criteria across states.",
+                    "Encourages performance-linked grants for local bodies."
+                )
+            ),
+            conclusion = "Institutionalizing permanent technical support can further deepen fiscal federalism.",
+            orderIndex = 0
+        )
+        val formatted10 = QuestionShareHelper.formatSubjectiveFlashcardText(1, card10)
+        assertTrue(formatted10.contains("10 Marks · 150 Words"))
+        assertTrue(formatted10.contains("Examine the role of the Finance Commission"))
+        assertTrue(formatted10.contains("1. Introduction:"))
+        assertTrue(formatted10.contains("2. Core Arguments & Dimensions:"))
+        assertTrue(formatted10.contains("1. Balances fiscal capacity with equity criteria across states."))
+        assertTrue(formatted10.contains("2. Encourages performance-linked grants for local bodies."))
+        assertTrue(formatted10.contains("3. Conclusion / Way Forward:"))
+
+        val card15 = card10.copy(marks = 15)
+        val formatted15 = QuestionShareHelper.formatSubjectiveFlashcardText(2, card15)
+        assertTrue(formatted15.contains("Q2 (15 Marks · 250 Words)"))
+    }
+
+    @Test
+    fun library_categories_include_prelims_mcqs_and_mains() {
+        assertEquals(
+            listOf("All", "Prelims - MCQs", "Mains"),
+            LibraryCategory.entries.map { it.label }
+        )
     }
 }

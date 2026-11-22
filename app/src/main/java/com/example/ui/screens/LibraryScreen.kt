@@ -47,6 +47,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -79,6 +82,7 @@ import com.example.ui.components.ClipboardAutoImportBanner
 import com.example.ui.components.ExamYearHeaderBar
 import com.example.ui.components.ManualJsonPasteDialog
 import com.example.ui.components.OpenBackupDocumentContract
+import com.example.viewmodel.LibraryCategory
 import com.example.viewmodel.LibraryFilterState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -89,6 +93,8 @@ fun LibraryScreen(
     examYearConfig: ExamYearConfig,
     decks: List<DeckSummary>,
     totalDeckCount: Int,
+    prelimsDeckCount: Int,
+    mainsDeckCount: Int,
     allMcqs: List<McqQuestionEntity>,
     filterState: LibraryFilterState,
     availableTags: List<String>,
@@ -97,6 +103,7 @@ fun LibraryScreen(
     showFreshRestorePrompt: Boolean,
     onUpdatePrelimsYear: (Int) -> Unit,
     onUpdateMainsYear: (Int) -> Unit,
+    onCategorySelected: (LibraryCategory) -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onTagSelected: (String?) -> Unit,
     onOpenDeck: (Long) -> Unit,
@@ -206,7 +213,57 @@ fun LibraryScreen(
                 )
             }
 
-            if (allMcqs.isNotEmpty()) {
+            if (totalDeckCount > 0) {
+                item(key = "category_selector") {
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("library_category_selector")
+                    ) {
+                        LibraryCategory.entries.forEachIndexed { index, category ->
+                            val count = when (category) {
+                                LibraryCategory.ALL -> totalDeckCount
+                                LibraryCategory.PRELIMS -> prelimsDeckCount
+                                LibraryCategory.MAINS -> mainsDeckCount
+                            }
+                            SegmentedButton(
+                                selected = filterState.selectedCategory == category,
+                                onClick = { onCategorySelected(category) },
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = LibraryCategory.entries.size
+                                ),
+                                icon = {},
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("library_category_${category.name.lowercase()}")
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = category.label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "$count",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (filterState.selectedCategory == category) {
+                                            MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (allMcqs.isNotEmpty() && filterState.selectedCategory != LibraryCategory.MAINS) {
                 item(key = "revise_by_hardness_card") {
                     ReviseByDifficultyCard(
                         easyCount = easyMcqCount,
@@ -218,6 +275,11 @@ fun LibraryScreen(
             }
 
             if (totalDeckCount > 0) {
+                val activeCategoryDeckCount = when (filterState.selectedCategory) {
+                    LibraryCategory.ALL -> totalDeckCount
+                    LibraryCategory.PRELIMS -> prelimsDeckCount
+                    LibraryCategory.MAINS -> mainsDeckCount
+                }
                 item(key = "search_and_tags") {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
@@ -250,7 +312,7 @@ fun LibraryScreen(
                             FilterChip(
                                 selected = filterState.selectedTag == null,
                                 onClick = { onTagSelected(null) },
-                                label = { Text("All (${totalDeckCount})") },
+                                label = { Text("All ($activeCategoryDeckCount)") },
                                 modifier = Modifier.testTag("tag_filter_all")
                             )
                             availableTags.forEach { tag ->
@@ -278,6 +340,24 @@ fun LibraryScreen(
                     )
                 }
             } else if (decks.isEmpty()) {
+                val emptyTitle = when (filterState.selectedCategory) {
+                    LibraryCategory.PRELIMS -> if (prelimsDeckCount == 0) "No Prelims - MCQ decks yet" else "No matching Prelims decks"
+                    LibraryCategory.MAINS -> if (mainsDeckCount == 0) "No Mains decks yet" else "No matching Mains decks"
+                    LibraryCategory.ALL -> "No matching study decks"
+                }
+                val emptySubtitle = when (filterState.selectedCategory) {
+                    LibraryCategory.PRELIMS -> if (prelimsDeckCount == 0) {
+                        "Generate Prelims MCQs in Studio or switch to All to view your Mains decks."
+                    } else {
+                        "Try clearing the search query or switching to All subjects."
+                    }
+                    LibraryCategory.MAINS -> if (mainsDeckCount == 0) {
+                        "Generate 10/15-mark Mains flashcards in Studio or switch to All to view your Prelims decks."
+                    } else {
+                        "Try clearing the search query or switching to All subjects."
+                    }
+                    LibraryCategory.ALL -> "Try clearing the search query or switching to All subjects."
+                }
                 item(key = "no_matches") {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -290,20 +370,24 @@ fun LibraryScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "No matching study decks",
+                                text = emptyTitle,
                                 style = MaterialTheme.typography.titleLarge
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Try clearing the search query or switching to All subjects.",
+                                text = emptySubtitle,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(12.dp))
-                            TextButton(onClick = {
-                                onSearchQueryChange("")
-                                onTagSelected(null)
-                            }) {
+                            TextButton(
+                                onClick = {
+                                    onCategorySelected(LibraryCategory.ALL)
+                                    onSearchQueryChange("")
+                                    onTagSelected(null)
+                                },
+                                modifier = Modifier.testTag("library_reset_filters_button")
+                            ) {
                                 Text("Reset Filters")
                             }
                         }

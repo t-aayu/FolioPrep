@@ -230,10 +230,14 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                         startDestination = Routes.LIBRARY
                     ) {
                         composable(Routes.LIBRARY) {
+                            val prelimsDeckCount = remember(allDecks) { allDecks.count { it.mcqCount > 0 } }
+                            val mainsDeckCount = remember(allDecks) { allDecks.count { it.subjectiveCount > 0 } }
                             LibraryScreen(
                                 examYearConfig = examYearConfig,
                                 decks = filteredDecks,
                                 totalDeckCount = allDecks.size,
+                                prelimsDeckCount = prelimsDeckCount,
+                                mainsDeckCount = mainsDeckCount,
                                 allMcqs = allMcqs,
                                 filterState = filterState,
                                 availableTags = availableTags,
@@ -242,6 +246,7 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 showFreshRestorePrompt = showFreshRestorePrompt,
                                 onUpdatePrelimsYear = viewModel::updatePrelimsYear,
                                 onUpdateMainsYear = viewModel::updateMainsYear,
+                                onCategorySelected = viewModel::onCategorySelected,
                                 onSearchQueryChange = viewModel::onSearchQueryChanged,
                                 onTagSelected = viewModel::onTagFilterSelected,
                                 onOpenDeck = { deckId ->
@@ -469,7 +474,8 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                             SubjectiveFlashcardScreen(
                                 bundle = bundle,
                                 onBack = { navController.popBackStack() },
-                                onToggleMastered = viewModel::toggleSubjectiveMastery
+                                onToggleMastered = viewModel::toggleSubjectiveMastery,
+                                onShowMessage = viewModel::showToast
                             )
                         }
                     }

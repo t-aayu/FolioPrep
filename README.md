@@ -130,16 +130,19 @@ gradle :app:bundleRelease
 ```
 
 ### Publishing a GitHub Release via GitHub Actions
-1. (Optional for signed release APKs/AABs) In **GitHub → Settings → Secrets and variables → Actions**, add:
+1. (Optional for Play-signed release APKs/AABs) In **GitHub → Settings → Secrets and variables → Actions**, add:
    - `UPLOAD_KEYSTORE_BASE64` — base64-encoded `.jks` keystore (`base64 -w 0 my-upload-key.jks`)
    - `STORE_PASSWORD` — keystore password
    - `KEY_PASSWORD` — upload key alias password
-2. Tag and push a version:
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-3. The [Android CI & GitHub Release](.github/workflows/android-release.yml) workflow automatically runs unit tests, builds versioned APKs/AABs, generates `SHA256SUMS.txt`, and publishes a GitHub Release with categorized release notes.
+   *(If these secrets are omitted, the workflow still builds and publishes an installable `FolioPrep-<tag>-debug.apk` plus `SHA256SUMS.txt`.)*
+2. Trigger a release in either of two ways:
+   - **One-Click from GitHub Web UI**: Open **Actions → Android CI & GitHub Release → Run workflow**, enter a tag (default `v1.0.0`), and click **Run workflow**.
+   - **Or push a version tag**:
+     ```bash
+     git tag v1.0.0
+     git push origin v1.0.0
+     ```
+3. The [Android CI & GitHub Release](.github/workflows/android-release.yml) workflow automatically runs unit tests, builds versioned APKs/AABs, generates `SHA256SUMS.txt`, and publishes the GitHub Release with categorized release notes.
 
 ---
 

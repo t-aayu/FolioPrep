@@ -91,7 +91,14 @@ data class StudioUiState(
         }
 }
 
+enum class LibraryCategory(val label: String) {
+    ALL("All"),
+    PRELIMS("Prelims - MCQs"),
+    MAINS("Mains")
+}
+
 data class LibraryFilterState(
+    val selectedCategory: LibraryCategory = LibraryCategory.ALL,
     val searchQuery: String = "",
     val selectedTag: String? = null
 )
@@ -173,12 +180,17 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         _filterState
     ) { decks, filter ->
         decks.filter { deck ->
+            val matchesCategory = when (filter.selectedCategory) {
+                LibraryCategory.ALL -> true
+                LibraryCategory.PRELIMS -> deck.mcqCount > 0
+                LibraryCategory.MAINS -> deck.subjectiveCount > 0
+            }
             val matchesQuery = filter.searchQuery.isBlank() ||
                 deck.title.contains(filter.searchQuery, ignoreCase = true) ||
                 deck.tagsSerialized.contains(filter.searchQuery, ignoreCase = true)
             val matchesTag = filter.selectedTag == null ||
                 deck.tagList().any { it.equals(filter.selectedTag, ignoreCase = true) }
-            matchesQuery && matchesTag
+            matchesCategory && matchesQuery && matchesTag
         }
     }.stateIn(
         scope = viewModelScope,
@@ -186,9 +198,19 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         initialValue = emptyList()
     )
 
-    val availableLibraryTags: StateFlow<List<String>> = allDecks.combine(_filterState) { decks, _ ->
-        val savedTags = decks.flatMap { it.tagList() }
-        (UpscSubjects.allTags + savedTags).distinctBy { it.lowercase() }
+    val availableLibraryTags: StateFlow<List<String>> = allDecks.combine(_filterState) { decks, filter ->
+        val matchingDecks = when (filter.selectedCategory) {
+            LibraryCategory.ALL -> decks
+            LibraryCategory.PRELIMS -> decks.filter { it.mcqCount > 0 }
+            LibraryCategory.MAINS -> decks.filter { it.subjectiveCount > 0 }
+        }
+        val baseTags = when (filter.selectedCategory) {
+            LibraryCategory.ALL -> UpscSubjects.allTags
+            LibraryCategory.PRELIMS -> UpscSubjects.mcqTags
+            LibraryCategory.MAINS -> UpscSubjects.mainsTags
+        }
+        val savedTags = matchingDecks.flatMap { it.tagList() }
+        (baseTags + savedTags).distinctBy { it.lowercase() }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -355,6 +377,13 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // --- Library Filters & Deck Operations ---
+
+    fun onCategorySelected(category: LibraryCategory) {
+        _filterState.update { current ->
+            if (current.selectedCategory == category) current
+            else current.copy(selectedCategory = category, selectedTag = null)
+        }
+    }
 
     fun onSearchQueryChanged(query: String) {
         _filterState.update { it.copy(searchQuery = query) }

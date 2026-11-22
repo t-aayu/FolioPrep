@@ -20,7 +20,5 @@
     <string name="empty_library_title">Your UPSC Revision Desk Awaits</string>
     <string name="empty_library_subtitle">Extract clean text from articles, textbook photos, or notes in Studio, share the year-calibrated prompt to ChatGPT, Gemini, or Claude, and auto-import your offline deck here.</string>
     <string name="micro_guide_steps">1. Pick your AI app  →  2. Tap Send &amp; Copy reply  →  3. Return here to auto-import</string>
-    <string name="github_repo_label">GitHub Repository</string>
-    <string name="github_repo_display">github.com/t-aayu/FolioPrep</string>
     <string name="github_repo_url">https://github.com/t-aayu/FolioPrep/</string>
 </resources>

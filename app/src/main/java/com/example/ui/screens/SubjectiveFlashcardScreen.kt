@@ -24,22 +24,29 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Flip
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,24 +57,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DeckDetailBundle
 import com.example.data.local.SubjectiveCardEntity
+import com.example.domain.QuestionShareHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectiveFlashcardScreen(
     bundle: DeckDetailBundle?,
     onBack: () -> Unit,
-    onToggleMastered: (cardId: Long, isMastered: Boolean, deckId: Long) -> Unit
+    onToggleMastered: (cardId: Long, isMastered: Boolean, deckId: Long) -> Unit,
+    onShowMessage: (String) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val cards = bundle?.subjectiveCards.orEmpty()
     val deckId = bundle?.deck?.id ?: -1L
     var currentIndex by remember(deckId) { mutableIntStateOf(0) }
     var isFlipped by remember(deckId, currentIndex) { mutableStateOf(false) }
+    var showShareSheet by remember { mutableStateOf(false) }
 
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -104,6 +119,19 @@ fun SubjectiveFlashcardScreen(
                         modifier = Modifier.testTag("flashcard_back_button")
                     ) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (cards.isNotEmpty()) {
+                        IconButton(
+                            onClick = { showShareSheet = true },
+                            modifier = Modifier.testTag("flashcard_top_share_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = "Share Mains flashcard"
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -191,10 +219,11 @@ fun SubjectiveFlashcardScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Flip & Mastery Controls
+                // Flip, Mastery & Share Controls
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     FilledTonalButton(
                         onClick = { isFlipped = !isFlipped },
@@ -233,6 +262,18 @@ fun SubjectiveFlashcardScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(if (card.isMastered) "Mastered" else "Mark Mastered")
+                    }
+
+                    FilledTonalIconButton(
+                        onClick = { showShareSheet = true },
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("share_flashcard_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Share,
+                            contentDescription = "Share flashcard as text or image"
+                        )
                     }
                 }
 
@@ -278,6 +319,147 @@ fun SubjectiveFlashcardScreen(
                         }
                     }
                 }
+            }
+        }
+
+        if (showShareSheet) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = { showShareSheet = false },
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Share ${card.marks}-Mark Mains Flashcard",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Share the full question and structured model answer (Introduction, Core Arguments & Conclusion) as text or as an image card.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    FlashcardShareOptionRow(
+                        icon = Icons.Outlined.Share,
+                        title = "Share as Text",
+                        subtitle = "Send formatted question and structured answer to WhatsApp, Notes, Telegram, or any app",
+                        testTag = "share_flashcard_text_option",
+                        onClick = {
+                            showShareSheet = false
+                            QuestionShareHelper.shareSubjectiveFlashcardText(
+                                context = context,
+                                cardNumber = safeIndex + 1,
+                                card = card
+                            ).onFailure {
+                                onShowMessage("Unable to share flashcard text: ${it.message ?: "error"}")
+                            }
+                        }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    FlashcardShareOptionRow(
+                        icon = Icons.Outlined.ContentCopy,
+                        title = "Copy Question & Answer Text",
+                        subtitle = "Copies the ${card.marks}-marker question and full answer blueprint to clipboard",
+                        testTag = "copy_flashcard_text_option",
+                        onClick = {
+                            QuestionShareHelper.copySubjectiveFlashcardToClipboard(
+                                context = context,
+                                cardNumber = safeIndex + 1,
+                                card = card
+                            )
+                            showShareSheet = false
+                            onShowMessage("${card.marks}-mark flashcard #${safeIndex + 1} copied to clipboard")
+                        }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    FlashcardShareOptionRow(
+                        icon = Icons.Outlined.Image,
+                        title = "Share as Image Card",
+                        subtitle = "Renders the ${card.marks}-marker question and complete answer blueprint as a shareable PNG",
+                        testTag = "share_flashcard_image_option",
+                        onClick = {
+                            showShareSheet = false
+                            QuestionShareHelper.shareSubjectiveFlashcardScreenshot(
+                                context = context,
+                                deckTitle = bundle?.deck?.title.orEmpty(),
+                                cardNumber = safeIndex + 1,
+                                card = card,
+                                isDarkTheme = isDarkTheme
+                            ).onFailure {
+                                onShowMessage("Unable to create flashcard image: ${it.message ?: "error"}")
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlashcardShareOptionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .minimumInteractiveComponentSize()
+            .testTag(testTag)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
