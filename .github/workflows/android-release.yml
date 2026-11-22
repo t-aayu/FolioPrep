@@ -7,13 +7,14 @@ on:
       - 'v*.*.*'
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-and-test:
-    name: Test & Build APK
+  build-and-release:
+    name: Test, Build & Release
     runs-on: ubuntu-latest
 
     steps:
@@ -65,13 +66,26 @@ jobs:
         run: |
           gradle :app:assembleRelease :app:bundleRelease
 
+      - name: Package versioned release assets & SHA-256 checksums
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p release-assets
+          cp app/build/outputs/apk/debug/app-debug.apk "release-assets/FolioPrep-${TAG}-debug.apk"
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk "release-assets/FolioPrep-${TAG}-release.apk"
+          fi
+          if [ -f app/build/outputs/bundle/release/app-release.aab ]; then
+            cp app/build/outputs/bundle/release/app-release.aab "release-assets/FolioPrep-${TAG}-release.aab"
+          fi
+          (cd release-assets && sha256sum * > SHA256SUMS.txt)
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: FolioPrep ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/bundle/release/app-release.aab
+            release-assets/*
           fail_on_unmatched_files: false

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.CreateNewFolder
@@ -61,10 +63,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
+import com.example.R
 import com.example.data.AppSettingsConfig
 import com.example.data.AppThemeMode
 import com.example.data.LocalBackupManager
@@ -74,6 +80,8 @@ import com.example.ui.components.OpenBackupFolderTreeContract
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private const val GITHUB_REPO_URL = "https://github.com/t-aayu/FolioPrep/"
 
 @Composable
 fun SettingsScreen(
@@ -86,6 +94,7 @@ fun SettingsScreen(
     onChooseBackupFolder: (Uri) -> Unit,
     onRestoreFromBackupUri: (Uri) -> Unit
 ) {
+    val context = LocalContext.current
     var showCustomSkillEditor by remember { mutableStateOf(false) }
     var draftCustomSkill by remember(settings.customSkillText) {
         mutableStateOf(settings.customSkillText)
@@ -565,6 +574,68 @@ fun SettingsScreen(
                         value = "UPSC CSE Study Studio · Offline-first on-device OCR, local article extraction & Room revision archive",
                         testTag = "settings_focus_info"
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    val repoUrl = stringResource(R.string.github_repo_url)
+                    Surface(
+                        onClick = {
+                            runCatching {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repoUrl.ifBlank { GITHUB_REPO_URL })).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }
+                        },
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .minimumInteractiveComponentSize()
+                            .testTag("settings_github_repo_link")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_github),
+                                        contentDescription = "GitHub repository",
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.github_repo_label),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = stringResource(R.string.github_repo_display),
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                                contentDescription = "Open FolioPrep GitHub repository",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
 

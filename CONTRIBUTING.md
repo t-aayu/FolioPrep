@@ -1,11 +1,15 @@
 # Contributing to FolioPrep
 
-Thank you for your interest in contributing to **FolioPrep**! Contributions that improve the UPSC CSE study workflow, parser resilience, accessibility, or offline performance are warmly welcomed.
+Thank you for your interest in contributing to **FolioPrep** ([github.com/t-aayu/FolioPrep](https://github.com/t-aayu/FolioPrep/))! Contributions that improve the UPSC CSE study workflow, parser resilience, accessibility, or offline performance are warmly welcomed.
 
 ## Getting Started
 
-1. **Fork** the repository and clone your fork locally.
-2. Open the project in **Android Studio** (JDK 11+, Android SDK 36).
+1. **Fork** [t-aayu/FolioPrep](https://github.com/t-aayu/FolioPrep) and clone your fork locally:
+   ```bash
+   git clone https://github.com/<your-username>/FolioPrep.git
+   cd FolioPrep
+   ```
+2. Open the project in **Android Studio** (JDK 21, Gradle 9.3.1, Android SDK 36).
 3. Create a feature or fix branch from `main`:
    ```bash
    git checkout -b feat/your-feature-name
@@ -14,7 +18,7 @@ Thank you for your interest in contributing to **FolioPrep**! Contributions that
 ## Coding Guidelines
 
 - Write all application code in **Kotlin** using **Jetpack Compose** and **Material 3**.
-- Keep FolioPrep **local-first**: do not introduce mandatory cloud accounts, trackers, or hardcoded API keys.
+- Keep FolioPrep **local-first**: do not introduce mandatory cloud accounts, trackers, broad storage permissions, or hardcoded API keys.
 - Use `MaterialTheme.colorScheme` and `Theme.kt` tokens rather than hardcoded hex colors inside composables.
 - Include meaningful `contentDescription` values on icons/images and preserve `48.dp` minimum touch targets.
 - Add `Modifier.testTag(...)` on new primary interactive components.
@@ -29,7 +33,7 @@ gradle :app:testDebugUnitTest --tests "com.example.JsonPayloadParserTest" --test
 gradle :app:assembleDebug
 ```
 
-If you modify `JsonPayloadParser` or `UpscPromptBuilder`, please include corresponding unit tests in `app/src/test/java/com/example/`.
+If you modify `JsonPayloadParser`, `UpscPromptBuilder`, `QuestionShareHelper`, or `LocalBackupManager`, please include corresponding unit tests in `app/src/test/java/com/example/`.
 
 ## Pull Request Process
 
