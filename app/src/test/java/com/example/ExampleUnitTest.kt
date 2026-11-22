@@ -210,4 +210,24 @@ class ExampleUnitTest {
             com.example.data.LocalBackupManager.defaultBackupDisplayPath()
         )
     }
+
+    @Test
+    fun share_helper_formats_explanation_with_correct_answer() {
+        val mcq = McqQuestionEntity(
+            deckId = 1L,
+            question = "Consider the following statements about Finance Commission.",
+            optionA = "1 only",
+            optionB = "2 only",
+            optionC = "Both 1 and 2",
+            optionD = "Neither 1 nor 2",
+            correctIndex = 1,
+            explanation = "Article 280 constitutes the Finance Commission.\nStatement 2 accurately describes its mandate.",
+            orderIndex = 0
+        )
+        val formatted = QuestionShareHelper.formatExplanationText(4, mcq)
+        assertTrue(formatted.contains("Q4 Explanation"))
+        assertTrue(formatted.contains("Correct Answer: B. 2 only"))
+        assertTrue(formatted.contains("Article 280 constitutes the Finance Commission."))
+        assertTrue(formatted.contains("Statement 2 accurately describes its mandate."))
+    }
 }

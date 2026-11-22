@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -148,6 +149,7 @@ fun McqSessionScreen(
         mutableIntStateOf((durationMinutes * 60).coerceAtLeast(60))
     }
     var showShareSheet by remember { mutableStateOf(false) }
+    var explanationShareTarget by remember { mutableStateOf<Pair<Int, McqQuestionEntity>?>(null) }
 
     fun finalizeSession() {
         if (isQuickSolve) {
@@ -295,6 +297,9 @@ fun McqSessionScreen(
                 isTimedExam = isTimedExam,
                 negativeFactor = negativeFactor,
                 elapsedSeconds = elapsedSeconds,
+                onShareExplanation = { qNum, qEntity ->
+                    explanationShareTarget = qNum to qEntity
+                },
                 onRestart = {
                     selectedAnswers.clear()
                     currentIndex = 0
@@ -305,8 +310,7 @@ fun McqSessionScreen(
                 onDone = onBack,
                 modifier = Modifier.padding(innerPadding)
             )
-            return@Scaffold
-        }
+        } else {
 
         val safeIndex = currentIndex.coerceIn(0, mcqs.lastIndex)
         val currentQuestion = mcqs[safeIndex]
@@ -554,26 +558,57 @@ fun McqSessionScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Outlined.Info,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "UPSC Question Setter Explanation",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Info,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "UPSC Question Setter Explanation",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = currentQuestion.explanation,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                SelectionContainer(
+                                    modifier = Modifier.testTag("selectable_explanation_text")
+                                ) {
+                                    Text(
+                                        text = currentQuestion.explanation,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        explanationShareTarget = (safeIndex + 1) to currentQuestion
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("share_explanation_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Share,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Share Explanation")
+                                }
                             }
                         }
                     }
@@ -708,6 +743,75 @@ fun McqSessionScreen(
                 }
             }
         }
+        }
+
+        explanationShareTarget?.let { (targetNumber, targetQuestion) ->
+            val expSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = { explanationShareTarget = null },
+                sheetState = expSheetState,
+                containerColor = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Share Explanation #$targetNumber",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Copy the correct answer and explanation as text, or capture a clean screenshot card to share directly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    ShareQuestionOptionRow(
+                        icon = Icons.Outlined.ContentCopy,
+                        title = "Copy Explanation",
+                        subtitle = "Copies the correct answer and full UPSC explanation to clipboard",
+                        testTag = "share_copy_explanation_option",
+                        onClick = {
+                            QuestionShareHelper.copyExplanationToClipboard(
+                                context = context,
+                                questionNumber = targetNumber,
+                                question = targetQuestion
+                            )
+                            explanationShareTarget = null
+                            onShowMessage("Explanation #$targetNumber copied to clipboard")
+                        }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    ShareQuestionOptionRow(
+                        icon = Icons.Outlined.PhotoCamera,
+                        title = "Share Screenshot of Explanation",
+                        subtitle = "Captures the correct answer and full explanation as a shareable image",
+                        testTag = "share_screenshot_explanation_option",
+                        onClick = {
+                            explanationShareTarget = null
+                            val result = QuestionShareHelper.shareExplanationScreenshot(
+                                context = context,
+                                deckTitle = headerSubtitle.orEmpty(),
+                                questionNumber = targetNumber,
+                                question = targetQuestion,
+                                isDarkTheme = isDarkTheme
+                            )
+                            result.onFailure {
+                                onShowMessage("Unable to create explanation screenshot: ${it.message ?: "error"}")
+                            }
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -774,6 +878,7 @@ private fun ExamSummaryReviewView(
     isTimedExam: Boolean,
     negativeFactor: Double,
     elapsedSeconds: Int,
+    onShareExplanation: (questionNumber: Int, question: McqQuestionEntity) -> Unit,
     onRestart: () -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier
@@ -937,11 +1042,29 @@ private fun ExamSummaryReviewView(
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
-                        Text(
-                            text = q.explanation,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        SelectionContainer {
+                            Text(
+                                text = q.explanation,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedButton(
+                            onClick = { onShareExplanation(idx + 1, q) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .minimumInteractiveComponentSize()
+                                .testTag("summary_share_explanation_${idx + 1}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Share Explanation")
+                        }
                     }
                 }
             }
