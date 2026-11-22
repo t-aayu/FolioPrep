@@ -1,0 +1,6 @@
+{
+  "name": "FolioPrep",
+  "description": "Local-first UPSC CSE prompt studio and offline quiz builder with on-device Jsoup scraping, ML Kit OCR, persistent Prelims/Mains exam year patterns, and Room flashcard storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
