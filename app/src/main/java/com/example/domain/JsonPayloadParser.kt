@@ -8,7 +8,8 @@ data class DraftMcq(
     val question: String,
     val options: List<String>,
     val correctIndex: Int,
-    val explanation: String
+    val explanation: String,
+    val difficulty: String = QuestionDifficulty.MEDIUM.label
 )
 
 data class DraftSubjective(
@@ -121,7 +122,11 @@ object JsonPayloadParser {
             .trim()
     }
 
-    fun parse(rawInput: String, fallbackTitle: String = "UPSC CSE Study Set"): Result<ParsedStudyPayload> {
+    fun parse(
+        rawInput: String,
+        fallbackTitle: String = "UPSC CSE Study Set",
+        defaultDifficulty: QuestionDifficulty = QuestionDifficulty.MEDIUM
+    ): Result<ParsedStudyPayload> {
         return runCatching {
             val jsonText = extractJsonObject(rawInput)
                 ?: throw IllegalArgumentException(
@@ -158,6 +163,15 @@ object JsonPayloadParser {
                     val ansRaw = obj.opt("ans") ?: obj.opt("answer") ?: obj.opt("correctIndex")
                     val ansIndex = normalizeAnswerIndex(ansRaw)
                     val exp = cleanDisplayText(obj.optString("exp", obj.optString("explanation", "")))
+                    val rawDifficulty = obj.optString(
+                        "difficulty",
+                        obj.optString("hardness", obj.optString("level", ""))
+                    ).trim()
+                    val normalizedDifficulty = if (rawDifficulty.isNotEmpty()) {
+                        QuestionDifficulty.fromRaw(rawDifficulty).label
+                    } else {
+                        defaultDifficulty.label
+                    }
 
                     mcqs.add(
                         DraftMcq(
@@ -165,7 +179,8 @@ object JsonPayloadParser {
                             question = q,
                             options = normalizedOpts,
                             correctIndex = ansIndex,
-                            explanation = exp.ifEmpty { "Review the correlated UPSC CSE syllabus concept and source context." }
+                            explanation = exp.ifEmpty { "Review the correlated UPSC CSE syllabus concept and source context." },
+                            difficulty = normalizedDifficulty
                         )
                     )
                 }

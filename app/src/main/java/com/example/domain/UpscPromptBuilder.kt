@@ -6,6 +6,27 @@ enum class QuestionMode(val label: String) {
     BOTH("Both")
 }
 
+enum class QuestionDifficulty(
+    val label: String,
+    val jsonValue: String,
+    val description: String
+) {
+    EASY("Easy", "Easy", "Foundational NCERT & direct conceptual clarity"),
+    MEDIUM("Medium", "Medium", "Standard UPSC CSE analytical & multi-statement level"),
+    HARD("Hard", "Hard", "Elimination-resistant high-order UPSC CSE difficulty");
+
+    companion object {
+        fun fromRaw(raw: String?): QuestionDifficulty {
+            val normalized = raw?.trim()?.lowercase().orEmpty()
+            return when {
+                normalized.startsWith("easy") || normalized.startsWith("basic") || normalized == "low" -> EASY
+                normalized.startsWith("hard") || normalized.startsWith("tough") || normalized.startsWith("difficult") || normalized == "high" -> HARD
+                else -> MEDIUM
+            }
+        }
+    }
+}
+
 object UpscSubjects {
     val mcqTags: List<String> = listOf(
         "Polity",
@@ -68,6 +89,7 @@ object UpscPromptBuilder {
         mains10Count: Int,
         mains15Count: Int,
         subjectTag: String?,
+        difficulty: QuestionDifficulty = QuestionDifficulty.MEDIUM,
         useCustomSkill: Boolean = false,
         customSkillText: String = ""
     ): String {
@@ -134,6 +156,7 @@ object UpscPromptBuilder {
         "None"
       ],
       "ans": 0,
+      "difficulty": "${difficulty.jsonValue}",
       "exp": "Statement 1 is correct because ...\nStatement 2 is incorrect because ..."
     }
   ],
@@ -193,6 +216,7 @@ object UpscPromptBuilder {
         "None"
       ],
       "ans": 0,
+      "difficulty": "${difficulty.jsonValue}",
       "exp": "Statement 1 is correct because ...\nStatement 2 is incorrect because ..."
     }
   ]
@@ -211,12 +235,13 @@ object UpscPromptBuilder {
             appendLine(activeSkillLine)
             appendLine("Using the source text below as a topic/current-affairs anchor, generate $taskSummary aligned with the UPSC CSE syllabus and Previous Year Question (PYQ) trends.")
             appendLine(subjectLine)
+            appendLine("TARGET HARDNESS / DIFFICULTY LEVEL: ${difficulty.label} — ${difficulty.description}.")
             appendLine()
             appendLine("EXAM PATTERN & SYLLABUS RULES:")
             appendLine(patternRules)
             appendLine("- SYLLABUS & PYQ CORRELATION: Do NOT restrict questions solely to facts mentioned in the source text. Treat the passage as a current-affairs or conceptual trigger, and freely integrate correlated static UPSC CSE syllabus knowledge (constitutional articles, acts, institutions, ecological linkages, economic mechanisms, and recurring PYQ themes) just like real UPSC papers.")
             if (includeMcq) {
-                appendLine("- For every MCQ: provide exactly 4 options in \"opts\" and set \"ans\" to the 0-based index (0, 1, 2, or 3) of the single correct option.")
+                appendLine("- For every MCQ: provide exactly 4 options in \"opts\", set \"ans\" to the 0-based index (0, 1, 2, or 3) of the single correct option, and include \"difficulty\" set to \"Easy\", \"Medium\", or \"Hard\" reflecting the question's actual UPSC CSE hardness level (calibrated primarily around ${difficulty.label}).")
             }
             if (includeMains10 || includeMains15) {
                 appendLine("- For every subjective item: set \"marks\" to 10 for 10-mark questions ($mains10Count) and 15 for 15-mark questions ($mains15Count).")

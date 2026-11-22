@@ -58,7 +58,9 @@ import androidx.compose.ui.unit.dp
 import com.example.domain.DraftMcq
 import com.example.domain.DraftSubjective
 import com.example.domain.ParsedStudyPayload
+import com.example.domain.QuestionDifficulty
 import com.example.domain.UpscSubjects
+import com.example.ui.components.DifficultyBadge
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -357,11 +359,17 @@ private fun DraftMcqPreviewCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "MCQ #$index",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "MCQ #$index",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    DifficultyBadge(difficulty = mcq.difficulty)
+                }
                 Row {
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Outlined.Edit, contentDescription = "Edit MCQ $index")
@@ -499,6 +507,7 @@ private fun EditMcqDialog(
     var optD by remember(mcq) { mutableStateOf(mcq.options.getOrElse(3) { "" }) }
     var correctIdx by remember(mcq) { mutableIntStateOf(mcq.correctIndex) }
     var explanation by remember(mcq) { mutableStateOf(mcq.explanation) }
+    var difficulty by remember(mcq) { mutableStateOf(QuestionDifficulty.fromRaw(mcq.difficulty).label) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -508,6 +517,20 @@ private fun EditMcqDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Text(
+                    text = "Hardness Level",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QuestionDifficulty.entries.forEach { level ->
+                        FilterChip(
+                            selected = difficulty.equals(level.label, ignoreCase = true),
+                            onClick = { difficulty = level.label },
+                            label = { Text(level.label) }
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = question,
                     onValueChange = { question = it },
@@ -549,7 +572,8 @@ private fun EditMcqDialog(
                             question = question,
                             options = listOf(optA, optB, optC, optD),
                             correctIndex = correctIdx,
-                            explanation = explanation
+                            explanation = explanation,
+                            difficulty = difficulty
                         )
                     )
                 }

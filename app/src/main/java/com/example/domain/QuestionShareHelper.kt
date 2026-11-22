@@ -192,8 +192,9 @@ object QuestionShareHelper {
         val startX = outerMargin + cardPadding
         var cursorY = outerMargin + cardPadding
 
-        // Header Pill ("UPSC CSE · Q1")
-        val badgeText = "UPSC CSE  ·  QUESTION $questionNumber"
+        // Header Pill ("UPSC CSE · Q1 · MEDIUM")
+        val diffLabel = QuestionDifficulty.fromRaw(question.difficulty).label.uppercase()
+        val badgeText = "UPSC CSE  ·  Q$questionNumber  ·  $diffLabel"
         val badgeWidth = badgePaint.measureText(badgeText) + 44f
         val pillRect = RectF(startX, cursorY, startX + badgeWidth, cursorY + badgeHeight)
         fillPaint.color = accentContainerColor

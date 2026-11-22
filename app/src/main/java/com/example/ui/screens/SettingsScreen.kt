@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -23,17 +25,22 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.SettingsBrightness
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -60,18 +67,44 @@ import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
 import com.example.data.AppSettingsConfig
 import com.example.data.AppThemeMode
+import com.example.data.LocalBackupManager
 import com.example.domain.UpscPromptBuilder
+import com.example.ui.components.OpenBackupDocumentContract
+import com.example.ui.components.OpenBackupFolderTreeContract
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(
     settings: AppSettingsConfig,
     onSelectThemeMode: (AppThemeMode) -> Unit,
     onToggleUseCustomSkill: (Boolean) -> Unit,
-    onSaveCustomSkill: (String) -> Unit
+    onSaveCustomSkill: (String) -> Unit,
+    onToggleAutoBackup: (Boolean) -> Unit,
+    onBackupNow: () -> Unit,
+    onChooseBackupFolder: (Uri) -> Unit,
+    onRestoreFromBackupUri: (Uri) -> Unit
 ) {
     var showCustomSkillEditor by remember { mutableStateOf(false) }
     var draftCustomSkill by remember(settings.customSkillText) {
         mutableStateOf(settings.customSkillText)
+    }
+
+    val chooseFolderLauncher = rememberLauncherForActivityResult(
+        contract = OpenBackupFolderTreeContract()
+    ) { uri ->
+        if (uri != null) {
+            onChooseBackupFolder(uri)
+        }
+    }
+
+    val restoreBackupLauncher = rememberLauncherForActivityResult(
+        contract = OpenBackupDocumentContract()
+    ) { uri ->
+        if (uri != null) {
+            onRestoreFromBackupUri(uri)
+        }
     }
 
     Box(
@@ -336,6 +369,168 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // LOCAL BACKUP & RESTORE SECTION
+            item(key = "local_backup_card") {
+                val backupLocationLabel = if (settings.backupTreeUri.isNotBlank()) {
+                    "Custom Android Folder/${LocalBackupManager.BACKUP_FILE_NAME}"
+                } else {
+                    LocalBackupManager.defaultBackupDisplayPath()
+                }
+                val lastBackupLabel = remember(settings.lastBackupTimestamp, settings.lastBackupDeckCount) {
+                    if (settings.lastBackupTimestamp > 0L) {
+                        val formatted = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+                            .format(Date(settings.lastBackupTimestamp))
+                        "Last saved $formatted (${settings.lastBackupDeckCount} deck${if (settings.lastBackupDeckCount == 1) "" else "s"})"
+                    } else {
+                        "Automatically saves whenever you add, practice, or edit decks"
+                    }
+                }
+
+                SettingsSectionCard(
+                    title = "Local Backup & Restore",
+                    subtitle = "Keep an automatic copy of all UPSC decks, MCQs, Mains flashcards & score history in your Android folder so your archive survives app uninstallation."
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .minimumInteractiveComponentSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Backup,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Auto-Backup to Android Folder",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (settings.autoBackupEnabled) {
+                                        "Updates $backupLocationLabel automatically"
+                                    } else {
+                                        "Paused — use Backup Now for manual saves"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Switch(
+                            checked = settings.autoBackupEnabled,
+                            onCheckedChange = onToggleAutoBackup,
+                            modifier = Modifier.testTag("auto_backup_switch")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.FolderOpen,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = backupLocationLabel,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = lastBackupLabel,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = onBackupNow,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("settings_backup_now_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Save,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Backup Now")
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                restoreBackupLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("settings_restore_backup_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Restore,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Restore")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { chooseFolderLauncher.launch(null) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("settings_choose_backup_folder_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CreateNewFolder,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            if (settings.backupTreeUri.isNotBlank()) {
+                                "Change Backup Folder"
+                            } else {
+                                "Choose Custom Android Backup Folder (Optional)"
+                            }
+                        )
                     }
                 }
             }

@@ -147,4 +147,67 @@ class ExampleUnitTest {
         assertTrue(formatted.contains("C. Both 1 and 2"))
         assertTrue(formatted.contains("D. Neither 1 nor 2"))
     }
+
+    @Test
+    fun prompt_defaults_to_medium_difficulty_and_requests_difficulty_field_in_json() {
+        val defaultPrompt = UpscPromptBuilder.buildPrompt(
+            sourceText = "Monetary Policy Committee inflation targeting.",
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026,
+            questionMode = QuestionMode.MCQ,
+            mcqCount = 5,
+            mains10Count = 0,
+            mains15Count = 0,
+            subjectTag = "Economy"
+        )
+        assertTrue(defaultPrompt.contains("TARGET HARDNESS / DIFFICULTY LEVEL: Medium"))
+        assertTrue(defaultPrompt.contains("\"difficulty\": \"Medium\""))
+        assertTrue(defaultPrompt.contains("include \"difficulty\" set to \"Easy\", \"Medium\", or \"Hard\""))
+
+        val hardPrompt = UpscPromptBuilder.buildPrompt(
+            sourceText = "Monetary Policy Committee inflation targeting.",
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026,
+            questionMode = QuestionMode.MCQ,
+            mcqCount = 5,
+            mains10Count = 0,
+            mains15Count = 0,
+            subjectTag = "Economy",
+            difficulty = com.example.domain.QuestionDifficulty.HARD
+        )
+        assertTrue(hardPrompt.contains("TARGET HARDNESS / DIFFICULTY LEVEL: Hard"))
+        assertTrue(hardPrompt.contains("\"difficulty\": \"Hard\""))
+    }
+
+    @Test
+    fun difficulty_normalization_handles_variants_and_defaults_to_medium() {
+        assertEquals(
+            com.example.domain.QuestionDifficulty.EASY,
+            com.example.domain.QuestionDifficulty.fromRaw("easy")
+        )
+        assertEquals(
+            com.example.domain.QuestionDifficulty.EASY,
+            com.example.domain.QuestionDifficulty.fromRaw("Basic / Introductory")
+        )
+        assertEquals(
+            com.example.domain.QuestionDifficulty.HARD,
+            com.example.domain.QuestionDifficulty.fromRaw("HARD")
+        )
+        assertEquals(
+            com.example.domain.QuestionDifficulty.HARD,
+            com.example.domain.QuestionDifficulty.fromRaw("Tough / Analytical")
+        )
+        assertEquals(
+            com.example.domain.QuestionDifficulty.MEDIUM,
+            com.example.domain.QuestionDifficulty.fromRaw("Moderate")
+        )
+        assertEquals(
+            com.example.domain.QuestionDifficulty.MEDIUM,
+            com.example.domain.QuestionDifficulty.fromRaw(null)
+        )
+        assertEquals(
+            "Documents/FolioPrep/folioprep_backup.json",
+            com.example.data.LocalBackupManager.defaultBackupDisplayPath()
+        )
+    }
 }

@@ -48,7 +48,8 @@ data class McqQuestionEntity(
     @ColumnInfo(name = "option_d") val optionD: String,
     @ColumnInfo(name = "correct_index") val correctIndex: Int,
     val explanation: String,
-    @ColumnInfo(name = "order_index") val orderIndex: Int = 0
+    @ColumnInfo(name = "order_index") val orderIndex: Int = 0,
+    @ColumnInfo(name = "difficulty") val difficulty: String = "Medium"
 ) {
     fun optionsList(): List<String> = listOf(optionA, optionB, optionC, optionD)
 }

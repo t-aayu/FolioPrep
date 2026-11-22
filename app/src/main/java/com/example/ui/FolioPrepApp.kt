@@ -58,16 +58,19 @@ object Routes {
     const val SETTINGS = "settings"
     const val IMPORT_PREVIEW = "import_preview"
     const val DECK_DETAIL = "deck/{deckId}"
-    const val QUICK_SOLVE = "quick_solve/{deckId}/{startIndex}"
-    const val PRACTICE = "practice/{deckId}"
-    const val TIMED_EXAM = "timed_exam/{deckId}/{durationMinutes}/{negativeFactor}"
+    const val QUICK_SOLVE = "quick_solve/{deckId}/{startIndex}/{difficulty}"
+    const val PRACTICE = "practice/{deckId}/{difficulty}"
+    const val TIMED_EXAM = "timed_exam/{deckId}/{durationMinutes}/{negativeFactor}/{difficulty}"
+    const val REVISE_BY_DIFFICULTY = "revise_difficulty/{difficulty}"
     const val FLASHCARDS = "flashcards/{deckId}"
 
     fun deckDetail(deckId: Long) = "deck/$deckId"
-    fun quickSolve(deckId: Long, startIndex: Int = 0) = "quick_solve/$deckId/$startIndex"
-    fun practice(deckId: Long) = "practice/$deckId"
-    fun timedExam(deckId: Long, durationMinutes: Int, negativeFactor: Double) =
-        "timed_exam/$deckId/$durationMinutes/$negativeFactor"
+    fun quickSolve(deckId: Long, startIndex: Int = 0, difficulty: String = "ALL") =
+        "quick_solve/$deckId/$startIndex/$difficulty"
+    fun practice(deckId: Long, difficulty: String = "ALL") = "practice/$deckId/$difficulty"
+    fun timedExam(deckId: Long, durationMinutes: Int, negativeFactor: Double, difficulty: String = "ALL") =
+        "timed_exam/$deckId/$durationMinutes/$negativeFactor/$difficulty"
+    fun reviseByDifficulty(difficulty: String) = "revise_difficulty/$difficulty"
     fun flashcards(deckId: Long) = "flashcards/$deckId"
 }
 
@@ -80,6 +83,8 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
     val appSettings by viewModel.appSettings.collectAsStateWithLifecycle()
     val filteredDecks by viewModel.filteredDecks.collectAsStateWithLifecycle()
     val allDecks by viewModel.allDecks.collectAsStateWithLifecycle()
+    val allMcqs by viewModel.allMcqs.collectAsStateWithLifecycle()
+    val showFreshRestorePrompt by viewModel.shouldShowFreshRestorePrompt.collectAsStateWithLifecycle()
     val filterState by viewModel.filterState.collectAsStateWithLifecycle()
     val availableTags by viewModel.availableLibraryTags.collectAsStateWithLifecycle()
     val studioState by viewModel.studioState.collectAsStateWithLifecycle()
@@ -229,10 +234,12 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 examYearConfig = examYearConfig,
                                 decks = filteredDecks,
                                 totalDeckCount = allDecks.size,
+                                allMcqs = allMcqs,
                                 filterState = filterState,
                                 availableTags = availableTags,
                                 detectedClipboard = studioState.detectedClipboardBanner,
                                 importErrorMessage = studioState.importErrorMessage,
+                                showFreshRestorePrompt = showFreshRestorePrompt,
                                 onUpdatePrelimsYear = viewModel::updatePrelimsYear,
                                 onUpdateMainsYear = viewModel::updateMainsYear,
                                 onSearchQueryChange = viewModel::onSearchQueryChanged,
@@ -242,6 +249,11 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 },
                                 onDeleteDeck = viewModel::deleteDeck,
                                 onOpenStudio = { navigateToTopLevel(Routes.STUDIO) },
+                                onReviseByDifficulty = { difficulty ->
+                                    navController.navigate(Routes.reviseByDifficulty(difficulty))
+                                },
+                                onRestoreFromBackupUri = viewModel::restoreFromBackupUri,
+                                onDismissFreshRestorePrompt = viewModel::dismissFreshRestorePrompt,
                                 onReviewClipboardBanner = {
                                     openImportPreviewIfReady(viewModel.openDetectedClipboardForPreview())
                                 },
@@ -269,6 +281,7 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 onSelectChunk = viewModel::selectChunk,
                                 onSelectSubjectFocus = viewModel::selectSubjectFocus,
                                 onSelectQuestionMode = viewModel::selectQuestionMode,
+                                onSelectDifficulty = viewModel::selectDifficulty,
                                 onAdjustMcqCount = viewModel::adjustMcqCount,
                                 onAdjustMains10Count = viewModel::adjustMains10Count,
                                 onAdjustMains15Count = viewModel::adjustMains15Count,
@@ -292,7 +305,11 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 settings = appSettings,
                                 onSelectThemeMode = viewModel::updateThemeMode,
                                 onToggleUseCustomSkill = viewModel::updateUseCustomSkill,
-                                onSaveCustomSkill = viewModel::saveCustomSkillText
+                                onSaveCustomSkill = viewModel::saveCustomSkillText,
+                                onToggleAutoBackup = viewModel::updateAutoBackupEnabled,
+                                onBackupNow = viewModel::backupNow,
+                                onChooseBackupFolder = viewModel::setBackupFolderUri,
+                                onRestoreFromBackupUri = viewModel::restoreFromBackupUri
                             )
                         }
 
@@ -331,12 +348,14 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                             DeckDetailScreen(
                                 bundle = bundle,
                                 onBack = { navController.popBackStack() },
-                                onStartQuickSolve = { id, startIdx ->
-                                    navController.navigate(Routes.quickSolve(id, startIdx))
+                                onStartQuickSolve = { id, startIdx, difficulty ->
+                                    navController.navigate(Routes.quickSolve(id, startIdx, difficulty))
                                 },
-                                onStartPractice = { id -> navController.navigate(Routes.practice(id)) },
-                                onStartTimedExam = { id, mins, neg ->
-                                    navController.navigate(Routes.timedExam(id, mins, neg))
+                                onStartPractice = { id, difficulty ->
+                                    navController.navigate(Routes.practice(id, difficulty))
+                                },
+                                onStartTimedExam = { id, mins, neg, difficulty ->
+                                    navController.navigate(Routes.timedExam(id, mins, neg, difficulty))
                                 },
                                 onStartSubjectiveFlashcards = { id ->
                                     navController.navigate(Routes.flashcards(id))
@@ -348,11 +367,13 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                             route = Routes.QUICK_SOLVE,
                             arguments = listOf(
                                 navArgument("deckId") { type = NavType.LongType },
-                                navArgument("startIndex") { type = NavType.IntType }
+                                navArgument("startIndex") { type = NavType.IntType },
+                                navArgument("difficulty") { type = NavType.StringType }
                             )
                         ) { entry ->
                             val deckId = entry.arguments?.getLong("deckId") ?: -1L
                             val startIndex = entry.arguments?.getInt("startIndex") ?: 0
+                            val difficulty = entry.arguments?.getString("difficulty") ?: "ALL"
                             val detailFlow = remember(deckId) { viewModel.observeDeckDetail(deckId) }
                             val bundle by detailFlow.collectAsStateWithLifecycle(initialValue = null)
 
@@ -360,6 +381,7 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 bundle = bundle,
                                 sessionMode = McqSessionMode.QUICK_SOLVE,
                                 initialQuestionIndex = startIndex,
+                                difficultyFilter = difficulty,
                                 onBack = { navController.popBackStack() },
                                 onShowMessage = viewModel::showToast
                             )
@@ -367,9 +389,13 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
 
                         composable(
                             route = Routes.PRACTICE,
-                            arguments = listOf(navArgument("deckId") { type = NavType.LongType })
+                            arguments = listOf(
+                                navArgument("deckId") { type = NavType.LongType },
+                                navArgument("difficulty") { type = NavType.StringType }
+                            )
                         ) { entry ->
                             val deckId = entry.arguments?.getLong("deckId") ?: -1L
+                            val difficulty = entry.arguments?.getString("difficulty") ?: "ALL"
                             val detailFlow = remember(deckId) { viewModel.observeDeckDetail(deckId) }
                             val bundle by detailFlow.collectAsStateWithLifecycle(initialValue = null)
 
@@ -378,6 +404,7 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 sessionMode = McqSessionMode.PRACTICE,
                                 durationMinutes = 15,
                                 negativeFactor = 0.0,
+                                difficultyFilter = difficulty,
                                 onBack = { navController.popBackStack() },
                                 onShowMessage = viewModel::showToast,
                                 onCompleteAttempt = viewModel::recordQuizAttempt
@@ -389,12 +416,14 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                             arguments = listOf(
                                 navArgument("deckId") { type = NavType.LongType },
                                 navArgument("durationMinutes") { type = NavType.IntType },
-                                navArgument("negativeFactor") { type = NavType.StringType }
+                                navArgument("negativeFactor") { type = NavType.StringType },
+                                navArgument("difficulty") { type = NavType.StringType }
                             )
                         ) { entry ->
                             val deckId = entry.arguments?.getLong("deckId") ?: -1L
                             val durationMinutes = entry.arguments?.getInt("durationMinutes") ?: 10
                             val negativeFactor = entry.arguments?.getString("negativeFactor")?.toDoubleOrNull() ?: 0.3333
+                            val difficulty = entry.arguments?.getString("difficulty") ?: "ALL"
                             val detailFlow = remember(deckId) { viewModel.observeDeckDetail(deckId) }
                             val bundle by detailFlow.collectAsStateWithLifecycle(initialValue = null)
 
@@ -403,9 +432,29 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 sessionMode = McqSessionMode.TIMED_EXAM,
                                 durationMinutes = durationMinutes,
                                 negativeFactor = negativeFactor,
+                                difficultyFilter = difficulty,
                                 onBack = { navController.popBackStack() },
                                 onShowMessage = viewModel::showToast,
                                 onCompleteAttempt = viewModel::recordQuizAttempt
+                            )
+                        }
+
+                        composable(
+                            route = Routes.REVISE_BY_DIFFICULTY,
+                            arguments = listOf(navArgument("difficulty") { type = NavType.StringType })
+                        ) { entry ->
+                            val difficulty = entry.arguments?.getString("difficulty") ?: "Medium"
+                            val mcqsFlow = remember(difficulty) { viewModel.observeMcqsByDifficulty(difficulty) }
+                            val mcqs by mcqsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+
+                            McqSessionScreen(
+                                bundle = null,
+                                sessionMode = McqSessionMode.PRACTICE,
+                                difficultyFilter = difficulty,
+                                standaloneMcqs = mcqs,
+                                standaloneTitle = "All $difficulty MCQs (Library Revision)",
+                                onBack = { navController.popBackStack() },
+                                onShowMessage = viewModel::showToast
                             )
                         }
 

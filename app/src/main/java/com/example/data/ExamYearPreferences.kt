@@ -35,7 +35,12 @@ data class ExamYearConfig(
 data class AppSettingsConfig(
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val useCustomSkill: Boolean = false,
-    val customSkillText: String = ""
+    val customSkillText: String = "",
+    val autoBackupEnabled: Boolean = true,
+    val backupTreeUri: String = "",
+    val lastBackupTimestamp: Long = 0L,
+    val lastBackupDeckCount: Int = 0,
+    val hasDismissedFreshRestorePrompt: Boolean = false
 )
 
 class ExamYearPreferences(private val context: Context) {
@@ -45,6 +50,11 @@ class ExamYearPreferences(private val context: Context) {
     private val themeModeKey = stringPreferencesKey("app_theme_mode")
     private val useCustomSkillKey = booleanPreferencesKey("use_custom_skill")
     private val customSkillTextKey = stringPreferencesKey("custom_skill_text")
+    private val autoBackupEnabledKey = booleanPreferencesKey("auto_backup_enabled")
+    private val backupTreeUriKey = stringPreferencesKey("backup_tree_uri")
+    private val lastBackupTimestampKey = androidx.datastore.preferences.core.longPreferencesKey("last_backup_timestamp")
+    private val lastBackupDeckCountKey = intPreferencesKey("last_backup_deck_count")
+    private val dismissedFreshRestoreKey = booleanPreferencesKey("dismissed_fresh_restore_prompt")
 
     val examYearConfigFlow: Flow<ExamYearConfig> = context.examYearDataStore.data.map { prefs ->
         ExamYearConfig(
@@ -63,7 +73,12 @@ class ExamYearPreferences(private val context: Context) {
         AppSettingsConfig(
             themeMode = parsedTheme,
             useCustomSkill = prefs[useCustomSkillKey] ?: false,
-            customSkillText = prefs[customSkillTextKey] ?: ""
+            customSkillText = prefs[customSkillTextKey] ?: "",
+            autoBackupEnabled = prefs[autoBackupEnabledKey] ?: true,
+            backupTreeUri = prefs[backupTreeUriKey] ?: "",
+            lastBackupTimestamp = prefs[lastBackupTimestampKey] ?: 0L,
+            lastBackupDeckCount = prefs[lastBackupDeckCountKey] ?: 0,
+            hasDismissedFreshRestorePrompt = prefs[dismissedFreshRestoreKey] ?: false
         )
     }
 
@@ -105,6 +120,31 @@ class ExamYearPreferences(private val context: Context) {
     suspend fun setCustomSkillText(skillText: String) {
         context.examYearDataStore.edit { prefs ->
             prefs[customSkillTextKey] = skillText.trim()
+        }
+    }
+
+    suspend fun setAutoBackupEnabled(enabled: Boolean) {
+        context.examYearDataStore.edit { prefs ->
+            prefs[autoBackupEnabledKey] = enabled
+        }
+    }
+
+    suspend fun setBackupTreeUri(uriString: String) {
+        context.examYearDataStore.edit { prefs ->
+            prefs[backupTreeUriKey] = uriString
+        }
+    }
+
+    suspend fun setLastBackupInfo(timestamp: Long, deckCount: Int) {
+        context.examYearDataStore.edit { prefs ->
+            prefs[lastBackupTimestampKey] = timestamp
+            prefs[lastBackupDeckCountKey] = deckCount
+        }
+    }
+
+    suspend fun setDismissedFreshRestorePrompt(dismissed: Boolean) {
+        context.examYearDataStore.edit { prefs ->
+            prefs[dismissedFreshRestoreKey] = dismissed
         }
     }
 }

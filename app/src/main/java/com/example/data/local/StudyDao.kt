@@ -46,6 +46,27 @@ interface StudyDao {
     @Query("SELECT * FROM quiz_attempts WHERE deck_id = :deckId ORDER BY completed_at DESC")
     fun observeAttemptsForDeck(deckId: Long): Flow<List<QuizAttemptEntity>>
 
+    @Query("SELECT * FROM mcq_questions ORDER BY id DESC")
+    fun observeAllMcqs(): Flow<List<McqQuestionEntity>>
+
+    @Query("SELECT * FROM mcq_questions WHERE LOWER(difficulty) = LOWER(:difficulty) ORDER BY id DESC")
+    fun observeMcqsByDifficulty(difficulty: String): Flow<List<McqQuestionEntity>>
+
+    @Query("SELECT * FROM study_decks ORDER BY created_at ASC")
+    suspend fun getAllDecksOnce(): List<StudyDeckEntity>
+
+    @Query("SELECT * FROM mcq_questions WHERE deck_id = :deckId ORDER BY order_index ASC, id ASC")
+    suspend fun getMcqsForDeckOnce(deckId: Long): List<McqQuestionEntity>
+
+    @Query("SELECT * FROM subjective_cards WHERE deck_id = :deckId ORDER BY order_index ASC, id ASC")
+    suspend fun getSubjectiveForDeckOnce(deckId: Long): List<SubjectiveCardEntity>
+
+    @Query("SELECT * FROM quiz_attempts WHERE deck_id = :deckId ORDER BY completed_at DESC")
+    suspend fun getAttemptsForDeckOnce(deckId: Long): List<QuizAttemptEntity>
+
+    @Query("SELECT COUNT(*) FROM study_decks")
+    suspend fun getDeckCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDeck(deck: StudyDeckEntity): Long
 
@@ -57,6 +78,9 @@ interface StudyDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAttempt(attempt: QuizAttemptEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAttempts(attempts: List<QuizAttemptEntity>)
 
     @Update
     suspend fun updateDeck(deck: StudyDeckEntity)
@@ -84,6 +108,20 @@ interface StudyDao {
             insertSubjectiveCards(
                 subjectiveCards.mapIndexed { idx, item -> item.copy(id = 0L, deckId = deckId, orderIndex = idx) }
             )
+        }
+        return deckId
+    }
+
+    @Transaction
+    suspend fun saveRestoredDeck(
+        deck: StudyDeckEntity,
+        mcqs: List<McqQuestionEntity>,
+        subjectiveCards: List<SubjectiveCardEntity>,
+        attempts: List<QuizAttemptEntity>
+    ): Long {
+        val deckId = saveFullDeck(deck.copy(id = 0L), mcqs, subjectiveCards)
+        if (attempts.isNotEmpty()) {
+            insertAttempts(attempts.map { it.copy(id = 0L, deckId = deckId) })
         }
         return deckId
     }

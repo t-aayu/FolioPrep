@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -28,6 +29,7 @@ import com.example.domain.InstalledAiApp
 import com.example.domain.JsonPayloadParser
 import com.example.domain.OcrExtractor
 import com.example.domain.ParsedStudyPayload
+import com.example.domain.QuestionDifficulty
 import com.example.domain.QuestionMode
 import com.example.domain.TextChunk
 import com.example.domain.TextChunker
@@ -39,6 +41,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -62,6 +65,7 @@ data class StudioUiState(
     val selectedChunkIndex: Int = 0,
     val selectedSubjectFocus: String? = null,
     val questionMode: QuestionMode = QuestionMode.MCQ,
+    val selectedDifficulty: QuestionDifficulty = QuestionDifficulty.MEDIUM,
     val mcqCount: Int = 0,
     val mains10Count: Int = 0,
     val mains15Count: Int = 0,
@@ -95,6 +99,7 @@ data class LibraryFilterState(
 class FolioPrepViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = StudyRepository(
+        context = application,
         studyDao = FolioPrepDatabase.getInstance(application).studyDao(),
         examYearPreferences = ExamYearPreferences(application)
     )
@@ -107,19 +112,60 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         initialValue = ExamYearConfig()
     )
 
-    val appSettings: StateFlow<AppSettingsConfig> = repository.appSettings.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = AppSettingsConfig()
-    )
+    private val appSettingsLoaded: StateFlow<AppSettingsConfig?> = repository.appSettings
+        .map<AppSettingsConfig, AppSettingsConfig?> { it }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = null
+        )
+
+    val appSettings: StateFlow<AppSettingsConfig> = appSettingsLoaded
+        .map { it ?: AppSettingsConfig() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = AppSettingsConfig()
+        )
 
     private val _filterState = MutableStateFlow(LibraryFilterState())
     val filterState: StateFlow<LibraryFilterState> = _filterState.asStateFlow()
 
-    val allDecks: StateFlow<List<DeckSummary>> = repository.deckSummaries.stateIn(
+    private val decksLoaded: StateFlow<List<DeckSummary>?> = repository.deckSummaries
+        .map<List<DeckSummary>, List<DeckSummary>?> { it }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = null
+        )
+
+    val allDecks: StateFlow<List<DeckSummary>> = decksLoaded
+        .map { it.orEmpty() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val allMcqs: StateFlow<List<McqQuestionEntity>> = repository.allMcqs.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
+    )
+
+    /**
+     * Prompts the user to restore from a local backup file ONLY when Room has confirmed 0 saved
+     * decks (e.g., fresh installation after uninstallation) AND the user hasn't dismissed it yet.
+     */
+    val shouldShowFreshRestorePrompt: StateFlow<Boolean> = combine(
+        decksLoaded,
+        appSettingsLoaded
+    ) { decks, settings ->
+        decks != null && settings != null && decks.isEmpty() && !settings.hasDismissedFreshRestorePrompt
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
     )
 
     val filteredDecks: StateFlow<List<DeckSummary>> = combine(
@@ -226,6 +272,88 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    // --- Automatic Local Backup & Restore ---
+
+    fun updateAutoBackupEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateAutoBackupEnabled(enabled)
+            if (enabled) {
+                val result = repository.performLocalBackup()
+                result.fold(
+                    onSuccess = { info ->
+                        showToast("Auto-backup enabled · Saved ${info.deckCount} deck(s) to ${info.locationLabel}")
+                    },
+                    onFailure = {
+                        showToast("Auto-backup enabled")
+                    }
+                )
+            } else {
+                showToast("Automatic local backup paused")
+            }
+        }
+    }
+
+    fun setBackupFolderUri(uri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                getApplication<Application>().contentResolver.takePersistableUriPermission(uri, flags)
+            }
+            repository.updateBackupTreeUri(uri.toString())
+            val result = repository.performLocalBackup()
+            result.fold(
+                onSuccess = { info ->
+                    showToast("Backup folder updated · Saved ${info.deckCount} deck(s)")
+                },
+                onFailure = { err ->
+                    showToast("Backup folder selected (write failed: ${err.message ?: "error"})")
+                }
+            )
+        }
+    }
+
+    fun backupNow() {
+        viewModelScope.launch {
+            val result = repository.performLocalBackup()
+            result.fold(
+                onSuccess = { info ->
+                    showToast("Backed up ${info.deckCount} deck(s), ${info.mcqCount} MCQs & ${info.subjectiveCount} Mains to ${info.locationLabel}")
+                },
+                onFailure = { err ->
+                    showToast("Backup failed: ${err.message ?: "Unable to write backup file"}")
+                }
+            )
+        }
+    }
+
+    fun restoreFromBackupUri(uri: Uri) {
+        viewModelScope.launch {
+            val result = repository.restoreFromBackupUri(uri)
+            result.fold(
+                onSuccess = { info ->
+                    val summary = when {
+                        info.restoredDecks > 0 ->
+                            "Restored ${info.restoredDecks} deck(s) (${info.restoredMcqs} MCQs, ${info.restoredSubjective} Mains)"
+                        info.skippedDuplicateDecks > 0 ->
+                            "All ${info.skippedDuplicateDecks} deck(s) in this backup are already in your library"
+                        else ->
+                            "Backup restored (settings synced; 0 decks in file)"
+                    }
+                    showToast(summary)
+                },
+                onFailure = { err ->
+                    showToast("Restore failed: ${err.message ?: "Invalid FolioPrep backup file"}")
+                }
+            )
+        }
+    }
+
+    fun dismissFreshRestorePrompt() {
+        viewModelScope.launch {
+            repository.dismissFreshRestorePrompt()
+        }
+    }
+
     // --- Library Filters & Deck Operations ---
 
     fun onSearchQueryChanged(query: String) {
@@ -241,6 +369,9 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun observeDeckDetail(deckId: Long): Flow<DeckDetailBundle?> =
         repository.observeDeckDetail(deckId)
+
+    fun observeMcqsByDifficulty(difficulty: String): Flow<List<McqQuestionEntity>> =
+        repository.observeMcqsByDifficulty(difficulty)
 
     fun deleteDeck(deckId: Long) {
         viewModelScope.launch {
@@ -446,6 +577,12 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun selectDifficulty(difficulty: QuestionDifficulty) {
+        _studioState.update { current ->
+            syncPromptIfAuto(current.copy(selectedDifficulty = difficulty))
+        }
+    }
+
     fun adjustMcqCount(delta: Int) {
         _studioState.update { current ->
             val next = (current.mcqCount + delta).coerceIn(0, 30)
@@ -560,7 +697,11 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                 val fallbackTitle = state.detectedSourceTitle.ifBlank {
                     state.selectedSubjectFocus?.let { "UPSC $it Set" } ?: "UPSC CSE Set"
                 }
-                val parsed = JsonPayloadParser.parse(raw, fallbackTitle).getOrNull() ?: return
+                val parsed = JsonPayloadParser.parse(
+                    rawInput = raw,
+                    fallbackTitle = fallbackTitle,
+                    defaultDifficulty = state.selectedDifficulty
+                ).getOrNull() ?: return
 
                 _studioState.update {
                     it.copy(
@@ -599,7 +740,11 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         val fallbackTitle = state.detectedSourceTitle.ifBlank {
             state.selectedSubjectFocus?.let { "UPSC $it Set" } ?: "UPSC CSE Set"
         }
-        val result = JsonPayloadParser.parse(rawText, fallbackTitle)
+        val result = JsonPayloadParser.parse(
+            rawInput = rawText,
+            fallbackTitle = fallbackTitle,
+            defaultDifficulty = state.selectedDifficulty
+        )
         return result.fold(
             onSuccess = { parsed ->
                 val enriched = enrichTagsWithSelectedFocus(parsed)
@@ -730,7 +875,8 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                     optionD = opts[3],
                     correctIndex = item.correctIndex.coerceIn(0, 3),
                     explanation = item.explanation.trim(),
-                    orderIndex = index
+                    orderIndex = index,
+                    difficulty = QuestionDifficulty.fromRaw(item.difficulty).label
                 )
             }
             val subjectiveEntities = draft.subjective.mapIndexed { index, item ->
@@ -797,6 +943,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
             mains10Count = state.mains10Count,
             mains15Count = state.mains15Count,
             subjectTag = state.selectedSubjectFocus,
+            difficulty = state.selectedDifficulty,
             useCustomSkill = settings.useCustomSkill,
             customSkillText = settings.customSkillText
         )

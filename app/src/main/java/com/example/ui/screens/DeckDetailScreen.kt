@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import com.example.data.local.DeckDetailBundle
 import com.example.data.local.McqQuestionEntity
 import com.example.data.local.QuizAttemptEntity
+import com.example.domain.QuestionDifficulty
+import com.example.ui.components.DifficultyBadge
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -70,12 +72,13 @@ import java.util.Locale
 fun DeckDetailScreen(
     bundle: DeckDetailBundle?,
     onBack: () -> Unit,
-    onStartQuickSolve: (deckId: Long, startIndex: Int) -> Unit,
-    onStartPractice: (Long) -> Unit,
-    onStartTimedExam: (deckId: Long, durationMinutes: Int, negativeFactor: Double) -> Unit,
+    onStartQuickSolve: (deckId: Long, startIndex: Int, difficultyFilter: String) -> Unit,
+    onStartPractice: (deckId: Long, difficultyFilter: String) -> Unit,
+    onStartTimedExam: (deckId: Long, durationMinutes: Int, negativeFactor: Double, difficultyFilter: String) -> Unit,
     onStartSubjectiveFlashcards: (Long) -> Unit
 ) {
     var showTimedConfigDialog by remember { mutableStateOf(false) }
+    var selectedDifficulty by remember { mutableStateOf("ALL") }
 
     Scaffold(
         topBar = {
@@ -114,6 +117,25 @@ fun DeckDetailScreen(
 
         val deck = bundle.deck
         val masteredCount = bundle.subjectiveCards.count { it.isMastered }
+        val easyCount = remember(bundle.mcqs) {
+            bundle.mcqs.count { QuestionDifficulty.fromRaw(it.difficulty) == QuestionDifficulty.EASY }
+        }
+        val mediumCount = remember(bundle.mcqs) {
+            bundle.mcqs.count { QuestionDifficulty.fromRaw(it.difficulty) == QuestionDifficulty.MEDIUM }
+        }
+        val hardCount = remember(bundle.mcqs) {
+            bundle.mcqs.count { QuestionDifficulty.fromRaw(it.difficulty) == QuestionDifficulty.HARD }
+        }
+        val filteredMcqs = remember(bundle.mcqs, selectedDifficulty) {
+            if (selectedDifficulty == "ALL") {
+                bundle.mcqs
+            } else {
+                bundle.mcqs.filter {
+                    QuestionDifficulty.fromRaw(it.difficulty).label.equals(selectedDifficulty, ignoreCase = true)
+                }
+            }
+        }
+        val activeFilterLabel = if (selectedDifficulty == "ALL") "" else " ($selectedDifficulty)"
 
         Box(
             modifier = Modifier
@@ -181,43 +203,97 @@ fun DeckDetailScreen(
                 }
 
                 if (bundle.mcqs.isNotEmpty()) {
-                    item(key = "quick_solve_mode") {
-                        StudyModeActionCard(
-                            icon = Icons.Outlined.Bolt,
-                            title = "Just Solve",
-                            subtitle = "${bundle.mcqs.size} MCQ${if (bundle.mcqs.size > 1) "s" else ""} · Solve directly with instant answer check & explanation — no timer or score log",
-                            badge = "QUICK SOLVE",
-                            accentContainer = MaterialTheme.colorScheme.secondaryContainer,
-                            accentContent = MaterialTheme.colorScheme.onSecondaryContainer,
-                            testTag = "launch_quick_solve_mode",
-                            onClick = { onStartQuickSolve(deck.id, 0) }
-                        )
+                    item(key = "difficulty_filter_card") {
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Filter MCQs by Hardness Level",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = selectedDifficulty == "ALL",
+                                        onClick = { selectedDifficulty = "ALL" },
+                                        label = { Text("All (${bundle.mcqs.size})") },
+                                        modifier = Modifier.testTag("deck_difficulty_all")
+                                    )
+                                    FilterChip(
+                                        selected = selectedDifficulty == QuestionDifficulty.EASY.label,
+                                        onClick = { selectedDifficulty = QuestionDifficulty.EASY.label },
+                                        enabled = easyCount > 0,
+                                        label = { Text("Easy ($easyCount)") },
+                                        modifier = Modifier.testTag("deck_difficulty_easy")
+                                    )
+                                    FilterChip(
+                                        selected = selectedDifficulty == QuestionDifficulty.MEDIUM.label,
+                                        onClick = { selectedDifficulty = QuestionDifficulty.MEDIUM.label },
+                                        enabled = mediumCount > 0,
+                                        label = { Text("Medium ($mediumCount)") },
+                                        modifier = Modifier.testTag("deck_difficulty_medium")
+                                    )
+                                    FilterChip(
+                                        selected = selectedDifficulty == QuestionDifficulty.HARD.label,
+                                        onClick = { selectedDifficulty = QuestionDifficulty.HARD.label },
+                                        enabled = hardCount > 0,
+                                        label = { Text("Hard ($hardCount)") },
+                                        modifier = Modifier.testTag("deck_difficulty_hard")
+                                    )
+                                }
+                            }
+                        }
                     }
 
-                    item(key = "practice_mode") {
-                        StudyModeActionCard(
-                            icon = Icons.Outlined.Quiz,
-                            title = "Prelims Practice Mode",
-                            subtitle = "${bundle.mcqs.size} MCQs · Instant answer reveal, detailed UPSC explanations & score tracking",
-                            badge = "UNTIMED",
-                            accentContainer = MaterialTheme.colorScheme.primaryContainer,
-                            accentContent = MaterialTheme.colorScheme.onPrimaryContainer,
-                            testTag = "launch_practice_mode",
-                            onClick = { onStartPractice(deck.id) }
-                        )
-                    }
+                    if (filteredMcqs.isNotEmpty()) {
+                        item(key = "quick_solve_mode") {
+                            StudyModeActionCard(
+                                icon = Icons.Outlined.Bolt,
+                                title = "Just Solve$activeFilterLabel",
+                                subtitle = "${filteredMcqs.size} MCQ${if (filteredMcqs.size > 1) "s" else ""} · Solve directly with instant answer check & explanation — no timer or score log",
+                                badge = "QUICK SOLVE",
+                                accentContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                accentContent = MaterialTheme.colorScheme.onSecondaryContainer,
+                                testTag = "launch_quick_solve_mode",
+                                onClick = { onStartQuickSolve(deck.id, 0, selectedDifficulty) }
+                            )
+                        }
 
-                    item(key = "timed_exam_mode") {
-                        StudyModeActionCard(
-                            icon = Icons.Outlined.Timer,
-                            title = "Timed Prelims Exam Mode",
-                            subtitle = "${bundle.mcqs.size} MCQs · Live countdown, question palette & optional UPSC -1/3 negative marking",
-                            badge = "SIMULATION",
-                            accentContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                            accentContent = MaterialTheme.colorScheme.onTertiaryContainer,
-                            testTag = "launch_timed_exam_mode",
-                            onClick = { showTimedConfigDialog = true }
-                        )
+                        item(key = "practice_mode") {
+                            StudyModeActionCard(
+                                icon = Icons.Outlined.Quiz,
+                                title = "Prelims Practice Mode$activeFilterLabel",
+                                subtitle = "${filteredMcqs.size} MCQs · Instant answer reveal, detailed UPSC explanations & score tracking",
+                                badge = "UNTIMED",
+                                accentContainer = MaterialTheme.colorScheme.primaryContainer,
+                                accentContent = MaterialTheme.colorScheme.onPrimaryContainer,
+                                testTag = "launch_practice_mode",
+                                onClick = { onStartPractice(deck.id, selectedDifficulty) }
+                            )
+                        }
+
+                        item(key = "timed_exam_mode") {
+                            StudyModeActionCard(
+                                icon = Icons.Outlined.Timer,
+                                title = "Timed Prelims Exam Mode$activeFilterLabel",
+                                subtitle = "${filteredMcqs.size} MCQs · Live countdown, question palette & optional UPSC -1/3 negative marking",
+                                badge = "SIMULATION",
+                                accentContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                accentContent = MaterialTheme.colorScheme.onTertiaryContainer,
+                                testTag = "launch_timed_exam_mode",
+                                onClick = { showTimedConfigDialog = true }
+                            )
+                        }
                     }
                 }
 
@@ -236,23 +312,23 @@ fun DeckDetailScreen(
                     }
                 }
 
-                if (bundle.mcqs.isNotEmpty()) {
+                if (filteredMcqs.isNotEmpty()) {
                     item(key = "solve_individual_header") {
                         Text(
-                            text = "Solve a Specific Question (${bundle.mcqs.size})",
+                            text = "Solve a Specific Question$activeFilterLabel (${filteredMcqs.size})",
                             style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.padding(top = 6.dp)
                         )
                     }
 
                     items(
-                        items = bundle.mcqs.mapIndexed { idx, mcq -> idx to mcq },
+                        items = filteredMcqs.mapIndexed { idx, mcq -> idx to mcq },
                         key = { (_, mcq) -> "pick_mcq_${mcq.id}" }
                     ) { (index, mcq) ->
                         QuickPickQuestionRow(
                             questionNumber = index + 1,
                             mcq = mcq,
-                            onClick = { onStartQuickSolve(deck.id, index) }
+                            onClick = { onStartQuickSolve(deck.id, index, selectedDifficulty) }
                         )
                     }
                 }
@@ -290,11 +366,11 @@ fun DeckDetailScreen(
 
         if (showTimedConfigDialog) {
             TimedExamConfigDialog(
-                questionCount = bundle.mcqs.size,
+                questionCount = filteredMcqs.size.coerceAtLeast(1),
                 onDismiss = { showTimedConfigDialog = false },
                 onStart = { minutes, negFactor ->
                     showTimedConfigDialog = false
-                    onStartTimedExam(deck.id, minutes, negFactor)
+                    onStartTimedExam(deck.id, minutes, negFactor, selectedDifficulty)
                 }
             )
         }
@@ -401,14 +477,19 @@ private fun QuickPickQuestionRow(
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = mcq.question.replace("\n", " "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                DifficultyBadge(difficulty = mcq.difficulty)
+                Text(
+                    text = mcq.question.replace("\n", " "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
                 imageVector = Icons.Outlined.PlayArrow,

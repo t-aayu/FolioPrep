@@ -98,6 +98,7 @@ import com.example.data.AppSettingsConfig
 import com.example.data.ExamYearConfig
 import com.example.domain.ExternalAiLauncher
 import com.example.domain.JsonPayloadParser
+import com.example.domain.QuestionDifficulty
 import com.example.domain.QuestionMode
 import com.example.domain.UpscSubjects
 import com.example.ui.components.ClipboardAutoImportBanner
@@ -130,6 +131,7 @@ fun StudioScreen(
     onSelectChunk: (Int) -> Unit,
     onSelectSubjectFocus: (String?) -> Unit,
     onSelectQuestionMode: (QuestionMode) -> Unit,
+    onSelectDifficulty: (QuestionDifficulty) -> Unit,
     onAdjustMcqCount: (Int) -> Unit,
     onAdjustMains10Count: (Int) -> Unit,
     onAdjustMains15Count: (Int) -> Unit,
@@ -629,6 +631,40 @@ fun StudioScreen(
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Question Hardness Level",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("question_difficulty_selector")
+                    ) {
+                        QuestionDifficulty.entries.forEachIndexed { index, difficulty ->
+                            SegmentedButton(
+                                selected = state.selectedDifficulty == difficulty,
+                                onClick = { onSelectDifficulty(difficulty) },
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = QuestionDifficulty.entries.size
+                                ),
+                                modifier = Modifier.testTag("difficulty_${difficulty.name.lowercase()}")
+                            ) {
+                                Text(difficulty.label, maxLines = 1)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "${state.selectedDifficulty.label}: ${state.selectedDifficulty.description} (AI also tags each MCQ's hardness in JSON for targeted revision.)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
                     Spacer(modifier = Modifier.height(14.dp))
 

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -33,8 +35,10 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Quiz
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Style
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -46,6 +50,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,16 +64,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.ExamYearConfig
+import com.example.data.LocalBackupManager
 import com.example.data.local.DeckSummary
+import com.example.data.local.McqQuestionEntity
 import com.example.domain.ExternalAiLauncher
 import com.example.domain.ParsedStudyPayload
+import com.example.domain.QuestionDifficulty
 import com.example.ui.components.ClipboardAutoImportBanner
 import com.example.ui.components.ExamYearHeaderBar
 import com.example.ui.components.ManualJsonPasteDialog
+import com.example.ui.components.OpenBackupDocumentContract
 import com.example.viewmodel.LibraryFilterState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -79,10 +89,12 @@ fun LibraryScreen(
     examYearConfig: ExamYearConfig,
     decks: List<DeckSummary>,
     totalDeckCount: Int,
+    allMcqs: List<McqQuestionEntity>,
     filterState: LibraryFilterState,
     availableTags: List<String>,
     detectedClipboard: ParsedStudyPayload?,
     importErrorMessage: String?,
+    showFreshRestorePrompt: Boolean,
     onUpdatePrelimsYear: (Int) -> Unit,
     onUpdateMainsYear: (Int) -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -90,6 +102,9 @@ fun LibraryScreen(
     onOpenDeck: (Long) -> Unit,
     onDeleteDeck: (Long) -> Unit,
     onOpenStudio: () -> Unit,
+    onReviseByDifficulty: (String) -> Unit,
+    onRestoreFromBackupUri: (Uri) -> Unit,
+    onDismissFreshRestorePrompt: () -> Unit,
     onReviewClipboardBanner: () -> Unit,
     onDismissClipboardBanner: () -> Unit,
     onParseManualJson: (String) -> Unit,
@@ -98,6 +113,28 @@ fun LibraryScreen(
     val context = LocalContext.current
     var showPasteDialog by remember { mutableStateOf(false) }
     var pendingDeleteDeck by remember { mutableStateOf<DeckSummary?>(null) }
+
+    val restoreBackupLauncher = rememberLauncherForActivityResult(
+        contract = OpenBackupDocumentContract()
+    ) { uri ->
+        if (uri != null) {
+            onRestoreFromBackupUri(uri)
+        }
+    }
+
+    fun launchBackupFilePicker() {
+        restoreBackupLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+    }
+
+    val easyMcqCount = remember(allMcqs) {
+        allMcqs.count { QuestionDifficulty.fromRaw(it.difficulty) == QuestionDifficulty.EASY }
+    }
+    val mediumMcqCount = remember(allMcqs) {
+        allMcqs.count { QuestionDifficulty.fromRaw(it.difficulty) == QuestionDifficulty.MEDIUM }
+    }
+    val hardMcqCount = remember(allMcqs) {
+        allMcqs.count { QuestionDifficulty.fromRaw(it.difficulty) == QuestionDifficulty.HARD }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -169,6 +206,17 @@ fun LibraryScreen(
                 )
             }
 
+            if (allMcqs.isNotEmpty()) {
+                item(key = "revise_by_hardness_card") {
+                    ReviseByDifficultyCard(
+                        easyCount = easyMcqCount,
+                        mediumCount = mediumMcqCount,
+                        hardCount = hardMcqCount,
+                        onSelectDifficulty = onReviseByDifficulty
+                    )
+                }
+            }
+
             if (totalDeckCount > 0) {
                 item(key = "search_and_tags") {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -225,7 +273,8 @@ fun LibraryScreen(
                         onOpenPasteDialog = {
                             onClearImportError()
                             showPasteDialog = true
-                        }
+                        },
+                        onRestoreBackup = { launchBackupFilePicker() }
                     )
                 }
             } else if (decks.isEmpty()) {
@@ -317,12 +366,155 @@ fun LibraryScreen(
             }
         )
     }
+
+    if (showFreshRestorePrompt) {
+        AlertDialog(
+            onDismissRequest = onDismissFreshRestorePrompt,
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Restore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text("Restore Previous Local Backup?") },
+            text = {
+                Text(
+                    "Reinstalled FolioPrep? If you previously backed up your UPSC CSE questions, select ${LocalBackupManager.defaultBackupDisplayPath()} from your Android folder to restore all decks, MCQs, Mains flashcards, and score history."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDismissFreshRestorePrompt()
+                        launchBackupFilePicker()
+                    },
+                    modifier = Modifier.testTag("fresh_install_restore_button")
+                ) {
+                    Text("Restore from File")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = onDismissFreshRestorePrompt,
+                    modifier = Modifier.testTag("fresh_install_start_fresh_button")
+                ) {
+                    Text("Start Fresh")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ReviseByDifficultyCard(
+    easyCount: Int,
+    mediumCount: Int,
+    hardCount: Int,
+    onSelectDifficulty: (String) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Tune,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Revise MCQs by Hardness",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                DifficultyRevisionPill(
+                    label = "Easy",
+                    count = easyCount,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    testTag = "library_revise_easy",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelectDifficulty(QuestionDifficulty.EASY.label) }
+                )
+                DifficultyRevisionPill(
+                    label = "Medium",
+                    count = mediumCount,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    testTag = "library_revise_medium",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelectDifficulty(QuestionDifficulty.MEDIUM.label) }
+                )
+                DifficultyRevisionPill(
+                    label = "Hard",
+                    count = hardCount,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    testTag = "library_revise_hard",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelectDifficulty(QuestionDifficulty.HARD.label) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DifficultyRevisionPill(
+    label: String,
+    count: Int,
+    containerColor: androidx.compose.ui.graphics.Color,
+    contentColor: androidx.compose.ui.graphics.Color,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = count > 0,
+        shape = MaterialTheme.shapes.medium,
+        color = if (count > 0) containerColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = modifier
+            .minimumInteractiveComponentSize()
+            .testTag(testTag)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = if (count > 0) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$count MCQ${if (count == 1) "" else "s"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (count > 0) contentColor.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @Composable
 private fun EmptyLibraryCard(
     onOpenStudio: () -> Unit,
-    onOpenPasteDialog: () -> Unit
+    onOpenPasteDialog: () -> Unit,
+    onRestoreBackup: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -376,6 +568,17 @@ private fun EmptyLibraryCard(
                 Icon(Icons.Outlined.ContentPasteGo, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Already Have AI JSON? Paste Here")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = onRestoreBackup,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("empty_restore_backup_button")
+            ) {
+                Icon(Icons.Outlined.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Restore from Local Backup File")
             }
         }
     }

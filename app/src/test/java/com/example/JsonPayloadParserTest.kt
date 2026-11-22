@@ -97,4 +97,28 @@ class JsonPayloadParserTest {
         assertTrue("Raw newlines inside string values should be escaped as \\n", json.contains("statements:\\n1. Statement one.\\n2. Statement two.\\n\\nHow many"))
         assertTrue("Escaped \\n in explanation should be preserved", json.contains("Statement 1 is correct.\\nStatement 2 is incorrect."))
     }
+
+    @Test
+    fun `extractJsonObject preserves difficulty field in MCQ objects`() {
+        val raw = """
+            ```json
+            {
+              "title": "Parliamentary Privileges",
+              "tags": ["Polity"],
+              "mcqs": [
+                {
+                  "q": "Consider Article 105 of the Constitution.",
+                  "opts": ["A", "B", "C", "D"],
+                  "ans": 1,
+                  "difficulty": "Hard",
+                  "exp": "Detailed reasoning."
+                }
+              ]
+            }
+            ```
+        """.trimIndent()
+        val sanitized = JsonPayloadParser.extractJsonObject(raw)
+        assertNotNull(sanitized)
+        assertTrue(sanitized!!.contains("\"difficulty\": \"Hard\""))
+    }
 }

@@ -70,7 +70,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DeckDetailBundle
 import com.example.data.local.McqQuestionEntity
+import com.example.domain.QuestionDifficulty
 import com.example.domain.QuestionShareHelper
+import com.example.ui.components.DifficultyBadge
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -88,6 +90,9 @@ fun McqSessionScreen(
     initialQuestionIndex: Int = 0,
     durationMinutes: Int = 15,
     negativeFactor: Double = 0.0,
+    difficultyFilter: String = "ALL",
+    standaloneMcqs: List<McqQuestionEntity>? = null,
+    standaloneTitle: String? = null,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit = {},
     onCompleteAttempt: (
@@ -107,17 +112,39 @@ fun McqSessionScreen(
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val isTimedExam = sessionMode == McqSessionMode.TIMED_EXAM
     val isQuickSolve = sessionMode == McqSessionMode.QUICK_SOLVE
-    val mcqs = bundle?.mcqs.orEmpty()
+    val mcqs = remember(bundle, difficultyFilter, standaloneMcqs) {
+        if (standaloneMcqs != null) {
+            standaloneMcqs
+        } else {
+            val raw = bundle?.mcqs.orEmpty()
+            if (difficultyFilter.equals("ALL", ignoreCase = true) || difficultyFilter.isBlank()) {
+                raw
+            } else {
+                raw.filter {
+                    QuestionDifficulty.fromRaw(it.difficulty).label.equals(difficultyFilter, ignoreCase = true)
+                }
+            }
+        }
+    }
     val deckId = bundle?.deck?.id ?: -1L
+    val sessionKey = "${deckId}_${difficultyFilter}_${standaloneTitle.orEmpty()}"
+    val headerSubtitle = standaloneTitle
+        ?: bundle?.deck?.title?.let { title ->
+            if (!difficultyFilter.equals("ALL", ignoreCase = true) && difficultyFilter.isNotBlank()) {
+                "$title · $difficultyFilter"
+            } else {
+                title
+            }
+        }
     val marksPerCorrect = 2.0
 
-    var currentIndex by remember(deckId, initialQuestionIndex) {
+    var currentIndex by remember(sessionKey, initialQuestionIndex) {
         mutableIntStateOf(initialQuestionIndex.coerceAtLeast(0))
     }
-    val selectedAnswers = remember(deckId, sessionMode) { mutableStateMapOf<Int, Int>() }
-    var isFinished by remember(deckId, sessionMode) { mutableStateOf(false) }
-    var elapsedSeconds by remember(deckId, sessionMode) { mutableIntStateOf(0) }
-    var remainingSeconds by remember(deckId, durationMinutes) {
+    val selectedAnswers = remember(sessionKey, sessionMode) { mutableStateMapOf<Int, Int>() }
+    var isFinished by remember(sessionKey, sessionMode) { mutableStateOf(false) }
+    var elapsedSeconds by remember(sessionKey, sessionMode) { mutableIntStateOf(0) }
+    var remainingSeconds by remember(sessionKey, durationMinutes) {
         mutableIntStateOf((durationMinutes * 60).coerceAtLeast(60))
     }
     var showShareSheet by remember { mutableStateOf(false) }
@@ -127,8 +154,9 @@ fun McqSessionScreen(
             onBack()
             return
         }
-        if (isFinished || mcqs.isEmpty() || deckId <= 0L) return
+        if (isFinished || mcqs.isEmpty()) return
         isFinished = true
+        if (deckId <= 0L) return
         var correct = 0
         var wrong = 0
         var skipped = 0
@@ -185,9 +213,9 @@ fun McqSessionScreen(
                             },
                             style = MaterialTheme.typography.titleMedium
                         )
-                        if (bundle != null) {
+                        if (!headerSubtitle.isNullOrBlank()) {
                             Text(
-                                text = bundle.deck.title,
+                                text = headerSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
@@ -373,12 +401,17 @@ fun McqSessionScreen(
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = currentQuestion.question,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(18.dp)
-                        )
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            DifficultyBadge(difficulty = currentQuestion.difficulty)
+                            Text(
+                                text = currentQuestion.question,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
 
                     currentQuestion.optionsList().forEachIndexed { optIndex, optionText ->
@@ -662,7 +695,7 @@ fun McqSessionScreen(
                             showShareSheet = false
                             val result = QuestionShareHelper.shareQuestionScreenshot(
                                 context = context,
-                                deckTitle = bundle?.deck?.title.orEmpty(),
+                                deckTitle = headerSubtitle.orEmpty(),
                                 questionNumber = safeIndex + 1,
                                 question = currentQuestion,
                                 isDarkTheme = isDarkTheme
@@ -863,13 +896,20 @@ private fun ExamSummaryReviewView(
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Q${idx + 1}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Q${idx + 1}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                DifficultyBadge(difficulty = q.difficulty)
+                            }
                             Text(
                                 text = statusLabel,
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
