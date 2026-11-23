@@ -69,7 +69,65 @@ class ExampleUnitTest {
             useCustomSkill = true,
             customSkillText = "   "
         )
-        assertTrue(promptBlankFallback.startsWith(UpscPromptBuilder.DEFAULT_SKILL_PROMPT))
+        assertTrue(promptBlankFallback.startsWith("# SKILL: UPSC CSE PRELIMS"))
+        assertTrue(promptBlankFallback.contains(UpscPromptBuilder.DEFAULT_SKILL_PROMPT))
+    }
+
+    @Test
+    fun mode_specific_skills_include_prelims_mains_and_integrated_both_sections() {
+        val prelimsPrompt = UpscPromptBuilder.buildPrompt(
+            sourceText = "Ramsar wetlands conservation and Mangroves.",
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026,
+            questionMode = QuestionMode.MCQ,
+            mcqCount = 7,
+            mains10Count = 0,
+            mains15Count = 0,
+            subjectTag = "Environment",
+            difficulty = com.example.domain.QuestionDifficulty.HARD
+        )
+        assertTrue(prelimsPrompt.startsWith("# SKILL: UPSC CSE PRELIMS"))
+        assertTrue(prelimsPrompt.contains("Total MCQs required: 7"))
+        assertTrue(prelimsPrompt.contains("TARGET HARDNESS / DIFFICULTY LEVEL: Hard"))
+        assertTrue(prelimsPrompt.contains("Only, All, Always, Generally, Exclusively, Necessarily, May, Can, Primarily"))
+        assertTrue(prelimsPrompt.contains("Why other options are incorrect"))
+        assertFalse(prelimsPrompt.contains("examiner", ignoreCase = true))
+        assertTrue(UpscPromptBuilder.isGeneratedPrompt(prelimsPrompt))
+
+        val mainsPrompt = UpscPromptBuilder.buildPrompt(
+            sourceText = "Cooperative federalism and GST Council dispute resolution.",
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026,
+            questionMode = QuestionMode.SUBJECTIVE,
+            mcqCount = 0,
+            mains10Count = 2,
+            mains15Count = 1,
+            subjectTag = "Polity and Governance",
+            difficulty = com.example.domain.QuestionDifficulty.MEDIUM
+        )
+        assertTrue(mainsPrompt.startsWith("# SKILL: UPSC CSE MAINS"))
+        assertTrue(mainsPrompt.contains("2 question(s) of 10 Marks / 150 Words and 1 question(s) of 15 Marks / 250 Words"))
+        assertTrue(mainsPrompt.contains("Critically examine"))
+        assertTrue(mainsPrompt.contains("GS Paper IV"))
+        assertFalse(mainsPrompt.contains("examiner", ignoreCase = true))
+        assertTrue(UpscPromptBuilder.isGeneratedPrompt(mainsPrompt))
+
+        val bothPrompt = UpscPromptBuilder.buildPrompt(
+            sourceText = "Digital Public Infrastructure and AI governance.",
+            latestPrelimsYear = 2027,
+            latestMainsYear = 2026,
+            questionMode = QuestionMode.BOTH,
+            mcqCount = 4,
+            mains10Count = 1,
+            mains15Count = 1,
+            subjectTag = "Sci-tech",
+            difficulty = com.example.domain.QuestionDifficulty.EASY
+        )
+        assertTrue(bothPrompt.startsWith("# SKILL: UPSC CSE PRELIMS & MAINS"))
+        assertTrue(bothPrompt.contains("PRELIMS MCQ STANDARDS (GS PAPER I — 4 MCQs)"))
+        assertTrue(bothPrompt.contains("MAINS DESCRIPTIVE STANDARDS (GS PAPERS I–IV — 1×10M, 1×15M)"))
+        assertTrue(bothPrompt.contains("TARGET HARDNESS / DIFFICULTY LEVEL: Easy"))
+        assertFalse(bothPrompt.contains("examiner", ignoreCase = true))
     }
 
     @Test

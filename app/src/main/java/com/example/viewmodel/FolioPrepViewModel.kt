@@ -670,10 +670,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         if (hash == state.lastAutoPastedClipboardHash) return
         if (JsonPayloadParser.looksLikeStudyPayload(raw)) return
         val customSkill = appSettings.value.customSkillText.trim()
-        if (raw.startsWith("Act strictly as a senior UPSC", ignoreCase = true) ||
-            raw.startsWith(UpscPromptBuilder.DEFAULT_SKILL_PROMPT, ignoreCase = true) ||
-            (customSkill.isNotEmpty() && raw.startsWith(customSkill, ignoreCase = true))
-        ) return
+        if (UpscPromptBuilder.isGeneratedPrompt(raw, customSkill)) return
 
         val looksLikeUrl = isLikelyUrl(raw)
         if (looksLikeUrl && (targetTab == null || targetTab == InputSourceTab.LINK)) {
