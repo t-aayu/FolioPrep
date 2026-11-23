@@ -90,6 +90,10 @@ class StudyRepository(
         examYearPreferences.setDismissedFreshRestorePrompt(true)
     }
 
+    suspend fun updateLastGeneratedMcqType(typeLabel: String) {
+        examYearPreferences.setLastGeneratedMcqType(typeLabel)
+    }
+
     suspend fun saveDeck(
         deck: StudyDeckEntity,
         mcqs: List<McqQuestionEntity>,

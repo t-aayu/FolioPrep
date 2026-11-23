@@ -571,8 +571,8 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     AboutInfoRow(
                         icon = Icons.Outlined.Code,
-                        label = "Focus & Architecture",
-                        value = "UPSC CSE Study Studio · Offline-first on-device OCR, local article extraction & Room revision archive",
+                        label = "About",
+                        value = "UPSC CSE Study Studio · Offline archive for Prelims MCQs & Mains flashcards",
                         testTag = "settings_focus_info"
                     )
                     Spacer(modifier = Modifier.height(10.dp))

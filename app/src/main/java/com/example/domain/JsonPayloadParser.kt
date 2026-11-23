@@ -130,7 +130,7 @@ object JsonPayloadParser {
         return runCatching {
             val jsonText = extractJsonObject(rawInput)
                 ?: throw IllegalArgumentException(
-                    "Could not locate a JSON object ({ ... }) in the pasted text. Copy the AI's JSON code snippet and try again."
+                    "Could not find valid questions in the pasted text. Copy the full generated reply and try again."
                 )
 
             val root = JSONObject(jsonText)
@@ -224,7 +224,7 @@ object JsonPayloadParser {
 
             if (mcqs.isEmpty() && subjectiveList.isEmpty()) {
                 throw IllegalArgumentException(
-                    "JSON was valid, but contained neither 'mcqs' nor 'subjective' questions."
+                    "No Prelims MCQs or Mains questions were found in the pasted reply."
                 )
             }
 

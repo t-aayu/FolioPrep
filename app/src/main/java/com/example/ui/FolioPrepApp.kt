@@ -111,6 +111,19 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
         }
     }
 
+    LaunchedEffect(studioState.pendingNavigateToStudio) {
+        if (studioState.pendingNavigateToStudio) {
+            if (currentRoute != Routes.STUDIO) {
+                navController.navigate(Routes.STUDIO) {
+                    popUpTo(Routes.LIBRARY) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+            viewModel.consumeNavigateToStudio()
+        }
+    }
+
     fun openImportPreviewIfReady(parsedOk: Boolean) {
         if (parsedOk && currentRoute != Routes.IMPORT_PREVIEW) {
             navController.navigate(Routes.IMPORT_PREVIEW)
@@ -287,6 +300,9 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 onSelectSubjectFocus = viewModel::selectSubjectFocus,
                                 onSelectQuestionMode = viewModel::selectQuestionMode,
                                 onSelectDifficulty = viewModel::selectDifficulty,
+                                onSelectMcqTypeOption = viewModel::selectMcqTypeOption,
+                                onCustomMcqTypeTextChange = viewModel::updateCustomMcqTypeText,
+                                onRotateAutoMcqType = viewModel::rotateAutoMcqType,
                                 onAdjustMcqCount = viewModel::adjustMcqCount,
                                 onAdjustMains10Count = viewModel::adjustMains10Count,
                                 onAdjustMains15Count = viewModel::adjustMains15Count,

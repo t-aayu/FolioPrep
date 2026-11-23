@@ -27,6 +27,8 @@ import com.example.domain.DraftSubjective
 import com.example.domain.ExternalAiLauncher
 import com.example.domain.InstalledAiApp
 import com.example.domain.JsonPayloadParser
+import com.example.domain.McqQuestionType
+import com.example.domain.McqTypeSelection
 import com.example.domain.OcrExtractor
 import com.example.domain.ParsedStudyPayload
 import com.example.domain.QuestionDifficulty
@@ -49,7 +51,7 @@ import kotlinx.coroutines.launch
 enum class InputSourceTab(val label: String) {
     TEXT("Text"),
     LINK("Link"),
-    IMAGE("Image OCR")
+    IMAGE("Photo Scan")
 }
 
 data class StudioUiState(
@@ -66,6 +68,9 @@ data class StudioUiState(
     val selectedSubjectFocus: String? = null,
     val questionMode: QuestionMode = QuestionMode.MCQ,
     val selectedDifficulty: QuestionDifficulty = QuestionDifficulty.MEDIUM,
+    val mcqTypeSelection: McqTypeSelection = McqTypeSelection.AutoRotate,
+    val autoPickedMcqType: McqQuestionType = McqQuestionType.THREE_STATEMENT,
+    val customMcqTypeText: String = "",
     val mcqCount: Int = 0,
     val mains10Count: Int = 0,
     val mains15Count: Int = 0,
@@ -74,6 +79,7 @@ data class StudioUiState(
     val yearChangedWhileCustomPrompt: Boolean = false,
     val installedAiApps: List<InstalledAiApp> = emptyList(),
     val pendingAiImport: Boolean = false,
+    val pendingNavigateToStudio: Boolean = false,
     val detectedClipboardBanner: ParsedStudyPayload? = null,
     val lastIgnoredClipboardHash: Int? = null,
     val lastAutoPastedClipboardHash: Int? = null,
@@ -224,17 +230,29 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
     )
     val studioState: StateFlow<StudioUiState> = _studioState.asStateFlow()
 
+    private var hasInitializedAutoMcqType = false
+
     init {
         viewModelScope.launch {
-            combine(examYearConfig, appSettings) { years, settings ->
-                years to settings
-            }.collect { (years, settings) ->
+            combine(examYearConfig, appSettingsLoaded) { years, loadedSettings ->
+                years to loadedSettings
+            }.collect { (years, loadedSettings) ->
+                val settings = loadedSettings ?: AppSettingsConfig()
                 _studioState.update { current ->
-                    if (current.isPromptManuallyEdited) {
-                        current.copy(yearChangedWhileCustomPrompt = true)
+                    var updated = current
+                    if (loadedSettings != null && !hasInitializedAutoMcqType) {
+                        hasInitializedAutoMcqType = true
+                        updated = updated.copy(
+                            autoPickedMcqType = UpscPromptBuilder.pickNextMcqTypeExcluding(
+                                loadedSettings.lastGeneratedMcqType
+                            )
+                        )
+                    }
+                    if (updated.isPromptManuallyEdited) {
+                        updated.copy(yearChangedWhileCustomPrompt = true)
                     } else {
-                        current.copy(
-                            promptText = buildPromptForState(current, years, settings),
+                        updated.copy(
+                            promptText = buildPromptForState(updated, years, settings),
                             yearChangedWhileCustomPrompt = false
                         )
                     }
@@ -475,6 +493,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun clearSourceText() {
+        val nextAutoType = UpscPromptBuilder.pickNextMcqTypeExcluding(appSettings.value.lastGeneratedMcqType)
         _studioState.update { current ->
             val updated = current.copy(
                 sourceText = "",
@@ -482,11 +501,56 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                 selectedImageUris = emptyList(),
                 chunks = emptyList(),
                 selectedChunkIndex = 0,
+                autoPickedMcqType = nextAutoType,
                 extractionStatusMessage = null,
                 extractionError = null
             )
             syncPromptIfAuto(updated)
         }
+    }
+
+    fun receiveSharedTextFromExternalApp(
+        text: String,
+        title: String = "",
+        isUrlOnly: Boolean = false
+    ) {
+        val cleaned = text.trim()
+        if (cleaned.isEmpty()) return
+
+        if (isUrlOnly) {
+            _studioState.update { current ->
+                current.copy(
+                    inputTab = InputSourceTab.LINK,
+                    urlInput = cleaned,
+                    detectedSourceTitle = title.ifBlank { current.detectedSourceTitle },
+                    extractionStatusMessage = "Article link received — tap Import Article to load text.",
+                    extractionError = null,
+                    pendingNavigateToStudio = true,
+                    transientToastMessage = "Link loaded into Studio"
+                )
+            }
+        } else {
+            val chunks = TextChunker.chunkText(cleaned)
+            val wordCount = TextChunker.countWords(cleaned)
+            _studioState.update { current ->
+                val updated = current.copy(
+                    inputTab = InputSourceTab.TEXT,
+                    sourceText = cleaned,
+                    detectedSourceTitle = title.ifBlank { current.detectedSourceTitle },
+                    chunks = chunks,
+                    selectedChunkIndex = 0,
+                    extractionStatusMessage = "Loaded shared text ($wordCount words)",
+                    extractionError = null,
+                    pendingNavigateToStudio = true,
+                    transientToastMessage = "Selected text loaded into Studio"
+                )
+                syncPromptIfAuto(updated)
+            }
+        }
+    }
+
+    fun consumeNavigateToStudio() {
+        _studioState.update { it.copy(pendingNavigateToStudio = false) }
     }
 
     fun selectChunk(index: Int) {
@@ -520,7 +584,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                             chunks = chunks,
                             selectedChunkIndex = 0,
                             extractionError = null,
-                            extractionStatusMessage = "Extracted locally via Jsoup · Stripped ~${article.reductionPercent}% HTML noise"
+                            extractionStatusMessage = "Article text imported (${TextChunker.countWords(article.cleanText)} words)"
                         )
                         syncPromptIfAuto(updated)
                     }
@@ -529,7 +593,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                     _studioState.update {
                         it.copy(
                             isExtracting = false,
-                            extractionError = error.message ?: "Failed to extract article text locally."
+                            extractionError = error.message ?: "Could not load text from this article link."
                         )
                     }
                 }
@@ -565,7 +629,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                             chunks = chunks,
                             selectedChunkIndex = 0,
                             extractionError = null,
-                            extractionStatusMessage = "On-device OCR complete (${uris.size} image${if (uris.size > 1) "s" else ""})"
+                            extractionStatusMessage = "Text scanned from ${uris.size} photo${if (uris.size > 1) "s" else ""}"
                         )
                         syncPromptIfAuto(updated)
                     }
@@ -574,7 +638,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                     _studioState.update {
                         it.copy(
                             isExtracting = false,
-                            extractionError = error.message ?: "On-device OCR failed to read the image."
+                            extractionError = error.message ?: "Could not read text from the selected photo."
                         )
                     }
                 }
@@ -609,6 +673,44 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectDifficulty(difficulty: QuestionDifficulty) {
         _studioState.update { current ->
             syncPromptIfAuto(current.copy(selectedDifficulty = difficulty))
+        }
+    }
+
+    fun selectMcqTypeOption(selection: McqTypeSelection) {
+        _studioState.update { current ->
+            val nextAuto = if (selection is McqTypeSelection.AutoRotate &&
+                current.mcqTypeSelection !is McqTypeSelection.AutoRotate
+            ) {
+                UpscPromptBuilder.pickNextMcqTypeExcluding(appSettings.value.lastGeneratedMcqType)
+            } else {
+                current.autoPickedMcqType
+            }
+            syncPromptIfAuto(
+                current.copy(
+                    mcqTypeSelection = selection,
+                    autoPickedMcqType = nextAuto
+                )
+            )
+        }
+    }
+
+    fun updateCustomMcqTypeText(text: String) {
+        _studioState.update { current ->
+            syncPromptIfAuto(current.copy(customMcqTypeText = text))
+        }
+    }
+
+    fun rotateAutoMcqType() {
+        val last = appSettings.value.lastGeneratedMcqType
+        _studioState.update { current ->
+            val excluded = current.autoPickedMcqType.label
+            val candidate = McqQuestionType.entries.filterNot {
+                it.label.equals(last, ignoreCase = true) || it.label.equals(excluded, ignoreCase = true)
+            }.let { pool ->
+                if (pool.isNotEmpty()) pool[kotlin.random.Random.nextInt(pool.size)]
+                else UpscPromptBuilder.pickNextMcqTypeExcluding(last)
+            }
+            syncPromptIfAuto(current.copy(autoPickedMcqType = candidate))
         }
     }
 
@@ -658,6 +760,15 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
     // --- Stage 2 & 3: Share & Clipboard Auto-Import ---
 
     fun markAwaitingAiReturn() {
+        val state = _studioState.value
+        if (state.questionMode != QuestionMode.SUBJECTIVE) {
+            val usedLabel = resolvedMcqTypeLabelForHistory(state)
+            if (usedLabel.isNotBlank()) {
+                viewModelScope.launch {
+                    repository.updateLastGeneratedMcqType(usedLabel)
+                }
+            }
+        }
         _studioState.update { it.copy(pendingAiImport = true, importErrorMessage = null) }
     }
 
@@ -786,7 +897,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
             },
             onFailure = { error ->
                 _studioState.update {
-                    it.copy(importErrorMessage = error.message ?: "Unable to parse JSON payload.")
+                    it.copy(importErrorMessage = error.message ?: "Could not read the pasted questions. Please copy the full reply and try again.")
                 }
                 false
             }
@@ -918,11 +1029,24 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                 )
             }
             val savedId = repository.saveDeck(deckEntity, mcqEntities, subjectiveEntities)
-            _studioState.update {
-                it.copy(
+            val usedLabel = if (mcqEntities.isNotEmpty() || state.questionMode != QuestionMode.SUBJECTIVE) {
+                resolvedMcqTypeLabelForHistory(state)
+            } else {
+                ""
+            }
+            if (usedLabel.isNotBlank()) {
+                repository.updateLastGeneratedMcqType(usedLabel)
+            }
+            val nextAutoType = UpscPromptBuilder.pickNextMcqTypeExcluding(
+                usedLabel.ifBlank { appSettings.value.lastGeneratedMcqType }
+            )
+            _studioState.update { current ->
+                val cleared = current.copy(
                     draftImport = null,
+                    autoPickedMcqType = nextAutoType,
                     transientToastMessage = "Saved offline deck with ${mcqEntities.size} MCQs & ${subjectiveEntities.size} Mains cards"
                 )
+                syncPromptIfAuto(cleared)
             }
             onSaved(savedId)
         }
@@ -949,6 +1073,20 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         return parsed.copy(tags = mergedTags)
     }
 
+    private fun resolveEffectiveMcqType(state: StudioUiState): Pair<McqQuestionType?, String> {
+        if (state.questionMode == QuestionMode.SUBJECTIVE) return null to ""
+        return when (val sel = state.mcqTypeSelection) {
+            McqTypeSelection.AutoRotate -> state.autoPickedMcqType to ""
+            is McqTypeSelection.Preset -> sel.type to ""
+            McqTypeSelection.Custom -> null to state.customMcqTypeText.trim()
+        }
+    }
+
+    private fun resolvedMcqTypeLabelForHistory(state: StudioUiState): String {
+        val (preset, custom) = resolveEffectiveMcqType(state)
+        return custom.ifBlank { preset?.label.orEmpty() }
+    }
+
     private fun syncPromptIfAuto(state: StudioUiState): StudioUiState {
         if (state.isPromptManuallyEdited) return state
         return state.copy(promptText = buildPromptForState(state, examYearConfig.value, appSettings.value))
@@ -960,6 +1098,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         settings: AppSettingsConfig
     ): String {
         val chunkText = state.chunks.getOrNull(state.selectedChunkIndex)?.text ?: state.sourceText
+        val (effectiveMcqType, effectiveCustomType) = resolveEffectiveMcqType(state)
         return UpscPromptBuilder.buildPrompt(
             sourceText = chunkText,
             latestPrelimsYear = years.latestPrelimsYear,
@@ -970,6 +1109,8 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
             mains15Count = state.mains15Count,
             subjectTag = state.selectedSubjectFocus,
             difficulty = state.selectedDifficulty,
+            mcqQuestionType = effectiveMcqType,
+            customMcqQuestionType = effectiveCustomType,
             useCustomSkill = settings.useCustomSkill,
             customSkillText = settings.customSkillText
         )

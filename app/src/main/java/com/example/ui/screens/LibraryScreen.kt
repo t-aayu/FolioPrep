@@ -188,11 +188,11 @@ fun LibraryScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.ContentPasteGo,
-                            contentDescription = "Paste AI JSON from Clipboard",
+                            contentDescription = "Paste questions from Clipboard",
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Paste JSON")
+                        Text("Paste Reply")
                     }
                 }
             }
@@ -640,7 +640,7 @@ private fun EmptyLibraryCard(
             ) {
                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Build Prompt in Studio")
+                Text("Create Questions in Studio")
             }
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
@@ -651,7 +651,7 @@ private fun EmptyLibraryCard(
             ) {
                 Icon(Icons.Outlined.ContentPasteGo, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Already Have AI JSON? Paste Here")
+                Text("Already Copied Questions? Paste Here")
             }
             Spacer(modifier = Modifier.height(8.dp))
             TextButton(

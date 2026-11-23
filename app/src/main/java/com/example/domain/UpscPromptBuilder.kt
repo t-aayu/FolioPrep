@@ -27,6 +27,59 @@ enum class QuestionDifficulty(
     }
 }
 
+enum class McqQuestionType(
+    val label: String,
+    val shortDescription: String,
+    val promptInstruction: String
+) {
+    DIRECT_ANALYTICAL(
+        label = "Direct analytical & conceptual MCQs",
+        shortDescription = "Conceptual, principle & application-based MCQs",
+        promptInstruction = "Frame direct analytical and conceptual UPSC Prelims MCQs testing fundamental principles, institutional/economic mechanisms, exceptions, and application—without multi-statement counting scaffolding."
+    ),
+    THREE_STATEMENT(
+        label = "3-statement questions.",
+        shortDescription = "Three numbered statements evaluated independently",
+        promptInstruction = "Frame 3-statement UPSC Prelims MCQs: present exactly 3 numbered statements (1., 2., 3.) for independent evaluation, concluding with either 'Which of the statements given above is/are correct?' or 'How many of the statements given above are correct?'."
+    ),
+    FOUR_STATEMENT(
+        label = "4-statement questions.",
+        shortDescription = "Four numbered statements with counting or combination options",
+        promptInstruction = "Frame 4-statement UPSC Prelims MCQs: present exactly 4 numbered statements (1., 2., 3., 4.) for independent evaluation, concluding with 'How many of the statements given above are correct?' or 'Which of the statements given above is/are correct?'."
+    ),
+    NESTED_3_4_STATEMENT(
+        label = "Nested 3 and 4 statement type (2026)",
+        shortDescription = "3/4 statements followed by 3/4 derived inferences to evaluate",
+        promptInstruction = "Frame Nested 3- and 4-statement type (2026) UPSC Prelims MCQs: first present 3 or 4 numbered primary statements ('Statements:\n1. ...\n2. ...\n3. ...'), then present 3 or 4 numbered inferences ('Inferences:\nI. ...\nII. ...\nIII. ...') where each inference is based on one or more of the statements given above, and conclude by asking which or how many of the above inferences are true."
+    ),
+    MATCH_2_3_COLUMNS(
+        label = "Match the following 2 columns and 3 columns",
+        shortDescription = "2-column or 3-column matching matrix questions",
+        promptInstruction = "Frame Match-the-Following UPSC Prelims MCQs using either 2 columns (List I – List II) or 3 columns (Column I – Column II – Column III) with cleanly aligned rows in \"q\" and matching code combinations in \"opts\"."
+    ),
+    ASSERTION_REASONING(
+        label = "Assertion and reasoning, where appropriate.",
+        shortDescription = "Statement-I & Statement-II causal explanation format",
+        promptInstruction = "Frame UPSC Statement-I / Statement-II (Assertion and Reasoning) MCQs testing causal or conceptual relationships, using standard UPSC options: Both Statement-I and Statement-II are correct and Statement-II is the correct explanation for Statement-I; Both are correct and Statement-II is not the correct explanation; Statement-I is correct but Statement-II is incorrect; Statement-I is incorrect but Statement-II is correct."
+    ),
+    CORRECT_INCORRECT_PAIRS(
+        label = "Correctly/incorrectly matched pairs.",
+        shortDescription = "Evaluate 3 or 4 pairs for correct or incorrect matches",
+        promptInstruction = "Frame Correctly / Incorrectly Matched Pairs UPSC Prelims MCQs presenting 3 or 4 pairs (e.g., Pair 1: Item — Attribute) and asking how many or which of the pairs given above are correctly (or incorrectly) matched."
+    ),
+    MULTIPLE_ITEM_ID(
+        label = "Multiple-item identification questions",
+        shortDescription = "Identify which or how many listed items fit a criterion",
+        promptInstruction = "Frame Multiple-Item Identification UPSC Prelims MCQs listing 3 to 5 specific items (species, bodies, sites, treaties, rivers, instruments, etc.) and asking 'How many of the above...' or 'Which of the above...' satisfy a precise UPSC criterion."
+    );
+}
+
+sealed class McqTypeSelection {
+    data object AutoRotate : McqTypeSelection()
+    data class Preset(val type: McqQuestionType) : McqTypeSelection()
+    data object Custom : McqTypeSelection()
+}
+
 object UpscSubjects {
     val mcqTags: List<String> = listOf(
         "Polity",
@@ -90,6 +143,17 @@ object UpscPromptBuilder {
             (custom.isNotEmpty() && trimmed.startsWith(custom, ignoreCase = true))
     }
 
+    fun pickNextMcqTypeExcluding(
+        lastGeneratedLabel: String?,
+        random: kotlin.random.Random = kotlin.random.Random.Default
+    ): McqQuestionType {
+        val last = lastGeneratedLabel?.trim().orEmpty()
+        val candidates = McqQuestionType.entries.filterNot {
+            it.label.equals(last, ignoreCase = true)
+        }.ifEmpty { McqQuestionType.entries }
+        return candidates[random.nextInt(candidates.size)]
+    }
+
     fun buildPrompt(
         sourceText: String,
         latestPrelimsYear: Int,
@@ -100,6 +164,8 @@ object UpscPromptBuilder {
         mains15Count: Int,
         subjectTag: String?,
         difficulty: QuestionDifficulty = QuestionDifficulty.MEDIUM,
+        mcqQuestionType: McqQuestionType? = null,
+        customMcqQuestionType: String = "",
         useCustomSkill: Boolean = false,
         customSkillText: String = ""
     ): String {
@@ -131,12 +197,19 @@ object UpscPromptBuilder {
             "SUBJECT / PAPER FOCUS: Automatically infer the most appropriate UPSC CSE GS paper, subject(s), and syllabus tags from the supplied source material."
         }
 
+        val mcqTypeRule = buildMcqTypeRule(
+            mcqQuestionType = mcqQuestionType,
+            customMcqQuestionType = customMcqQuestionType
+        )
+
         val schemaBlock = buildSchemaBlock(
             includeMcq = includeMcq,
             includeSubjective = includeSubjective,
-            difficulty = difficulty
+            difficulty = difficulty,
+            mcqQuestionType = mcqQuestionType,
+            customMcqQuestionType = customMcqQuestionType
         )
-        val cleanSource = sourceText.trim().ifEmpty { "[Paste text, extract a link, or scan notes with OCR above]" }
+        val cleanSource = sourceText.trim().ifEmpty { "[Paste text, import an article link, or scan a photo above]" }
         val customSkillActive = useCustomSkill && customSkillText.isNotBlank()
 
         if (customSkillActive) {
@@ -151,6 +224,7 @@ object UpscPromptBuilder {
                 mains10Count = mains10Count,
                 mains15Count = mains15Count,
                 difficulty = difficulty,
+                mcqTypeRule = mcqTypeRule,
                 schemaBlock = schemaBlock,
                 cleanSource = cleanSource
             )
@@ -163,6 +237,7 @@ object UpscPromptBuilder {
                 latestPrelimsYear = latestPrelimsYear,
                 mcqCount = mcqCount,
                 difficulty = difficulty,
+                mcqTypeRule = mcqTypeRule,
                 schemaBlock = schemaBlock,
                 cleanSource = cleanSource
             )
@@ -189,10 +264,25 @@ object UpscPromptBuilder {
                 mains10Count = mains10Count,
                 mains15Count = mains15Count,
                 difficulty = difficulty,
+                mcqTypeRule = mcqTypeRule,
                 schemaBlock = schemaBlock,
                 cleanSource = cleanSource
             )
         }
+    }
+
+    private fun buildMcqTypeRule(
+        mcqQuestionType: McqQuestionType?,
+        customMcqQuestionType: String
+    ): String? {
+        val custom = customMcqQuestionType.trim()
+        if (custom.isNotEmpty()) {
+            return "REQUIRED MCQ QUESTION TYPE: Strictly frame the generated Prelims MCQs in this requested style/format: $custom."
+        }
+        if (mcqQuestionType != null) {
+            return "REQUIRED MCQ QUESTION TYPE: ${mcqQuestionType.label} — ${mcqQuestionType.promptInstruction}"
+        }
+        return null
     }
 
     private fun difficultyGuidanceForPrelims(difficulty: QuestionDifficulty): String = when (difficulty) {
@@ -219,6 +309,7 @@ object UpscPromptBuilder {
         latestPrelimsYear: Int,
         mcqCount: Int,
         difficulty: QuestionDifficulty,
+        mcqTypeRule: String?,
         schemaBlock: String,
         cleanSource: String
     ): String = buildString {
@@ -232,6 +323,9 @@ object UpscPromptBuilder {
         appendLine("## 2. ASSIGNMENT & DIFFICULTY CALIBRATION")
         appendLine("- GENERATE EXACTLY: $taskSummary (Total MCQs required: $mcqCount).")
         appendLine("- $subjectLine")
+        if (!mcqTypeRule.isNullOrBlank()) {
+            appendLine("- $mcqTypeRule")
+        }
         appendLine("- EXAM PATTERN CALIBRATION: Strictly emulate official UPSC CSE Prelims $latestPrelimsYear trends AND all previous UPSC CSE Prelims years up to $latestPrelimsYear.")
         appendLine("- TARGET HARDNESS / DIFFICULTY LEVEL: ${difficulty.label} — ${difficulty.description}.")
         appendLine("- ${difficultyGuidanceForPrelims(difficulty)}")
@@ -239,18 +333,19 @@ object UpscPromptBuilder {
         appendLine()
         appendLine("## 3. PRELIMS QUESTION PATTERNS & SUBJECT EXPERTISE (GS PAPER I)")
         appendLine("- GS Paper I Domains: History & Culture (chronology, movements, heritage), Indian Polity & Governance (constitutional/statutory/quasi-judicial distinctions, powers & limitations), Geography (spatial & causal processes, map-based reasoning), Indian Economy (mechanisms, policy implications, indicator relationships), Environment & Ecology (ecosystems, species-habitat, conservation designations, conventions), Science & Technology (scientific principles & applications), and IR & Global Initiatives (mandates, groupings, India's interests).")
-        appendLine("- Vary question formats naturally—do NOT force every question into one template. Mix across:")
-        appendLine("  1. Multi-statement questions (2, 3, or 4 statements) including both traditional option combinations and recent counting formats ('How many of the statements given above are correct?').")
-        appendLine("  2. Statement-I / Statement-II assertion-reasoning questions.")
-        appendLine("  3. Match-the-following / correctly or incorrectly matched pairs (institutions, species-habitats, rivers, constitutional provisions, economic terms, organisations).")
-        appendLine("  4. Analytical, cause-and-effect, single-statement, and application-based questions.")
+        appendLine("- Supported UPSC Question Formats:")
+        appendLine("  1. Direct analytical & conceptual MCQs.")
+        appendLine("  2. 3-statement and 4-statement questions (including counting 'How many of the statements given above are correct?').")
+        appendLine("  3. Nested 3 and 4 statement type (2026): 3/4 primary statements followed by 3/4 derived inferences based on one or more of the statements, asking which or how many of the inferences are true.")
+        appendLine("  4. Match-the-following (2 columns and 3 columns) and correctly/incorrectly matched pairs.")
+        appendLine("  5. Statement-I / Statement-II assertion and reasoning, and multiple-item identification questions.")
         appendLine("- Qualifiers & Distractor Design: Use authentic qualifiers carefully (Only, All, Always, Generally, Exclusively, Necessarily, May, Can, Primarily). Construct plausible, challenging distractors via one subtle factual/conceptual error, confusing closely related provisions/institutions/economic concepts, incorrect causal links, interchanged habitats/locations, or confusing what an institution can do vs. what it is constitutionally empowered to do. Never use absurd or artificially obvious distractors.")
         appendLine()
         appendLine("## 4. SYLLABUS & PYQ CORRELATION, ACCURACY & EXPLANATIONS")
         appendLine("- SYLLABUS & PYQ CORRELATION: Treat the source below as a current-affairs or conceptual anchor. Identify the central issue, extract underlying static UPSC concepts, and freely integrate verified static syllabus knowledge and interdisciplinary links. Do NOT restrict questions to sentences explicitly in the source, and do NOT invent facts or fabricate PYQs.")
         appendLine("- STRICT ACCURACY: Accuracy takes precedence over difficulty. Verify constitutional articles, statutory provisions, scientific/ecological facts, and economic principles; never manufacture certainty or allow outdated facts.")
         appendLine("- QUALITY CONTROL: Before finalising, internally verify each question has exactly one verifiable correct answer, unambiguous statements, plausible distractors, no repetitive templates, and authentic UPSC GS Paper I relevance.")
-        appendLine("- DETAILED EXPLANATION IN \"exp\": For every MCQ, structure \"exp\" clearly with \\n line breaks covering: (1) independent analysis of each statement (citing relevant constitutional articles, statutes, scientific/economic mechanisms, and exceptions), (2) brief elimination logic explaining why other options are incorrect, and (3) UPSC Relevance (GS Paper I syllabus area & underlying concept tested).")
+        appendLine("- DETAILED EXPLANATION IN \"exp\": For every MCQ, structure \"exp\" clearly with \\n line breaks covering: (1) independent analysis of each statement/inference (citing relevant constitutional articles, statutes, scientific/economic mechanisms, and exceptions), (2) brief elimination logic explaining why other options are incorrect, and (3) UPSC Relevance (GS Paper I syllabus area & underlying concept tested).")
         appendLine()
         appendLine("## 5. OUTPUT FORMAT (STRICT JSON FOR FOLIOPREP)")
         appendLine("- For every MCQ: provide exactly 4 options in \"opts\", set \"ans\" to the 0-based index (0, 1, 2, or 3) of the single correct option, and include \"difficulty\" set to \"Easy\", \"Medium\", or \"Hard\" reflecting the question's actual UPSC CSE hardness level (calibrated primarily around ${difficulty.label}).")
@@ -308,6 +403,7 @@ object UpscPromptBuilder {
         mains10Count: Int,
         mains15Count: Int,
         difficulty: QuestionDifficulty,
+        mcqTypeRule: String?,
         schemaBlock: String,
         cleanSource: String
     ): String = buildString {
@@ -320,6 +416,9 @@ object UpscPromptBuilder {
         appendLine("## 2. ASSIGNMENT & DIFFICULTY CALIBRATION")
         appendLine("- GENERATE EXACTLY: $taskSummary.")
         appendLine("- $subjectLine")
+        if (includeMcq && !mcqTypeRule.isNullOrBlank()) {
+            appendLine("- $mcqTypeRule")
+        }
         appendLine("- EXAM PATTERN CALIBRATION: Strictly emulate official UPSC CSE Prelims $latestPrelimsYear (and all previous years) for MCQs, AND official UPSC CSE Mains $latestMainsYear (and all previous years) for descriptive questions.")
         appendLine("- TARGET HARDNESS / DIFFICULTY LEVEL: ${difficulty.label} — ${difficulty.description}.")
         appendLine("- Prelims Calibration: ${difficultyGuidanceForPrelims(difficulty)}")
@@ -328,7 +427,7 @@ object UpscPromptBuilder {
         if (includeMcq) {
             appendLine("## 3. PRELIMS MCQ STANDARDS (GS PAPER I — $mcqCount MCQs)")
             appendLine("- Test conceptual depth, subtle distinctions, exceptions, static-current application, and analytical elimination across History & Culture, Polity & Governance, Geography, Economy, Environment & Ecology, Sci-Tech, and IR.")
-            appendLine("- Vary formats naturally across 2/3/4-statement questions, counting ('How many of the statements given above are correct?'), Statement-I/II assertion-reasoning, match-the-following/pair-matching, and single-statement analytical questions.")
+            appendLine("- Supported MCQ styles include direct analytical MCQs, 3/4-statement questions, Nested 3 and 4 statement type (2026 — 3/4 statements followed by 3/4 derived inferences), 2/3-column match-the-following, assertion-reasoning, matched pairs, and multiple-item identification.")
             appendLine("- Use qualifiers carefully (Only, All, Always, Generally, Exclusively, Necessarily, May, Can, Primarily) and construct intelligent, plausible distractors (subtle factual/conceptual errors, closely related provisions/institutions, interchanged habitats/locations, incorrect causality). Never use absurd distractors.")
             appendLine("- In each MCQ's \"exp\", provide statement-by-statement verification (with articles/statutes/mechanisms/exceptions), brief elimination logic, and UPSC syllabus relevance.")
             appendLine()
@@ -366,6 +465,7 @@ object UpscPromptBuilder {
         mains10Count: Int,
         mains15Count: Int,
         difficulty: QuestionDifficulty,
+        mcqTypeRule: String?,
         schemaBlock: String,
         cleanSource: String
     ): String = buildString {
@@ -373,11 +473,14 @@ object UpscPromptBuilder {
         appendLine()
         appendLine("Using the source text below as a topic/current-affairs anchor, generate $taskSummary aligned with the UPSC CSE syllabus and Previous Year Question (PYQ) trends.")
         appendLine(subjectLine)
+        if (includeMcq && !mcqTypeRule.isNullOrBlank()) {
+            appendLine(mcqTypeRule)
+        }
         appendLine("TARGET HARDNESS / DIFFICULTY LEVEL: ${difficulty.label} — ${difficulty.description}.")
         appendLine()
         appendLine("EXAM PATTERN & SYLLABUS RULES:")
         if (includeMcq) {
-            appendLine("- PRELIMS PATTERN CALIBRATION (Up to $latestPrelimsYear): Align with UPSC CSE Prelims $latestPrelimsYear and previous years, incorporating varied multi-statement, counting, assertion-reasoning, and pair-matching styles with rigorous explanations.")
+            appendLine("- PRELIMS PATTERN CALIBRATION (Up to $latestPrelimsYear): Align with UPSC CSE Prelims $latestPrelimsYear and previous years, following the requested MCQ question style with rigorous explanations.")
         }
         if (includeSubjective) {
             appendLine("- MAINS PATTERN CALIBRATION (Up to $latestMainsYear): Align with UPSC CSE Mains $latestMainsYear and previous years using authentic UPSC directive words, calibrated for 10-mark (150 words) and 15-mark (250 words) depth.")
@@ -410,9 +513,21 @@ object UpscPromptBuilder {
     private fun buildSchemaBlock(
         includeMcq: Boolean,
         includeSubjective: Boolean,
-        difficulty: QuestionDifficulty
-    ): String = when {
-        includeMcq && includeSubjective -> """
+        difficulty: QuestionDifficulty,
+        mcqQuestionType: McqQuestionType? = null,
+        customMcqQuestionType: String = ""
+    ): String {
+        val sampleMcqQuestion = if (
+            customMcqQuestionType.isBlank() &&
+            mcqQuestionType == McqQuestionType.NESTED_3_4_STATEMENT
+        ) {
+            "Statements:\\n1. First primary statement here.\\n2. Second primary statement here.\\n3. Third primary statement here.\\n\\nInferences:\\nI. First inference derived from statement(s) above.\\nII. Second inference derived from statement(s) above.\\nIII. Third inference derived from statement(s) above.\\n\\nHow many of the above inferences are true?"
+        } else {
+            "Consider the following statements:\\n1. First statement here.\\n2. Second statement here.\\n\\nHow many of the statements given above are correct?"
+        }
+
+        return when {
+            includeMcq && includeSubjective -> """
 {
   "title": "Concise UPSC Topic Title",
   "tags": [
@@ -420,16 +535,16 @@ object UpscPromptBuilder {
   ],
   "mcqs": [
     {
-      "q": "Consider the following statements:\n1. First statement here.\n2. Second statement here.\n\nHow many of the statements given above are correct?",
+      "q": "$sampleMcqQuestion",
       "opts": [
         "Only one",
         "Only two",
-        "All of the above",
+        "All three",
         "None"
       ],
       "ans": 0,
       "difficulty": "${difficulty.jsonValue}",
-      "exp": "Statement 1 is correct because ...\nStatement 2 is incorrect because ...\n\nWhy other options are incorrect: ...\nUPSC Relevance: GS Paper I - ..."
+      "exp": "Statement/Inference 1 is correct because ...\nStatement/Inference 2 is incorrect because ...\n\nWhy other options are incorrect: ...\nUPSC Relevance: GS Paper I - ..."
     }
   ],
   "subjective": [
@@ -447,9 +562,9 @@ object UpscPromptBuilder {
     }
   ]
 }
-        """.trimIndent()
+            """.trimIndent()
 
-        includeSubjective -> """
+            includeSubjective -> """
 {
   "title": "Concise UPSC Topic Title",
   "tags": [
@@ -470,9 +585,9 @@ object UpscPromptBuilder {
     }
   ]
 }
-        """.trimIndent()
+            """.trimIndent()
 
-        else -> """
+            else -> """
 {
   "title": "Concise UPSC Topic Title",
   "tags": [
@@ -480,19 +595,20 @@ object UpscPromptBuilder {
   ],
   "mcqs": [
     {
-      "q": "Consider the following statements:\n1. First statement here.\n2. Second statement here.\n\nHow many of the statements given above are correct?",
+      "q": "$sampleMcqQuestion",
       "opts": [
         "Only one",
         "Only two",
-        "All of the above",
+        "All three",
         "None"
       ],
       "ans": 0,
       "difficulty": "${difficulty.jsonValue}",
-      "exp": "Statement 1 is correct because ...\nStatement 2 is incorrect because ...\n\nWhy other options are incorrect: ...\nUPSC Relevance: GS Paper I - ..."
+      "exp": "Statement/Inference 1 is correct because ...\nStatement/Inference 2 is incorrect because ...\n\nWhy other options are incorrect: ...\nUPSC Relevance: GS Paper I - ..."
     }
   ]
 }
-        """.trimIndent()
+            """.trimIndent()
+        }
     }
 }

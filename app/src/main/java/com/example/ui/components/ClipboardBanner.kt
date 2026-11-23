@@ -82,13 +82,13 @@ fun ClipboardAutoImportBanner(
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.AutoAwesome,
-                                contentDescription = "Detected AI JSON",
+                                contentDescription = "Detected questions",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "AI Reply Detected in Clipboard",
+                                text = "Questions Ready to Import",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
@@ -144,14 +144,14 @@ fun ManualJsonPasteDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Paste AI JSON Reply",
+                text = "Paste Generated Questions",
                 style = MaterialTheme.typography.titleLarge
             )
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Paste the response copied from ChatGPT, Gemini, Claude, or Perplexity. Markdown fences and extra prose are stripped automatically.",
+                    text = "Paste the reply copied from ChatGPT, Gemini, Claude, or Perplexity.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -179,7 +179,7 @@ fun ManualJsonPasteDialog(
                 OutlinedTextField(
                     value = rawText,
                     onValueChange = { rawText = it },
-                    placeholder = { Text("{\"mcqs\":[...], \"subjective\":[...]}") },
+                    placeholder = { Text("Paste copied questions here...") },
                     textStyle = PromptEditorTextStyle,
                     minLines = 5,
                     maxLines = 8,
@@ -203,7 +203,7 @@ fun ManualJsonPasteDialog(
                 enabled = rawText.isNotBlank(),
                 modifier = Modifier.testTag("parse_manual_json_button")
             ) {
-                Text("Parse & Preview")
+                Text("Preview & Save")
             }
         },
         dismissButton = {

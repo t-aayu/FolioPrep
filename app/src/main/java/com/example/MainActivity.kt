@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +24,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) {
+            handleIncomingIntent(intent)
+        }
         setContent {
             val appSettings by viewModel.appSettings.collectAsStateWithLifecycle()
             val darkTheme = when (appSettings.themeMode) {
@@ -34,6 +38,21 @@ class MainActivity : ComponentActivity() {
                 FolioPrepApp(viewModel = viewModel)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(incoming: Intent?) {
+        val shared = ExternalAiLauncher.extractIncomingSharedText(this, incoming) ?: return
+        viewModel.receiveSharedTextFromExternalApp(
+            text = shared.text,
+            title = shared.title,
+            isUrlOnly = shared.isUrlOnly
+        )
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

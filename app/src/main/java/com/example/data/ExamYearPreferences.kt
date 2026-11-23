@@ -40,7 +40,8 @@ data class AppSettingsConfig(
     val backupTreeUri: String = "",
     val lastBackupTimestamp: Long = 0L,
     val lastBackupDeckCount: Int = 0,
-    val hasDismissedFreshRestorePrompt: Boolean = false
+    val hasDismissedFreshRestorePrompt: Boolean = false,
+    val lastGeneratedMcqType: String = ""
 )
 
 class ExamYearPreferences(private val context: Context) {
@@ -55,6 +56,7 @@ class ExamYearPreferences(private val context: Context) {
     private val lastBackupTimestampKey = androidx.datastore.preferences.core.longPreferencesKey("last_backup_timestamp")
     private val lastBackupDeckCountKey = intPreferencesKey("last_backup_deck_count")
     private val dismissedFreshRestoreKey = booleanPreferencesKey("dismissed_fresh_restore_prompt")
+    private val lastGeneratedMcqTypeKey = stringPreferencesKey("last_generated_mcq_type")
 
     val examYearConfigFlow: Flow<ExamYearConfig> = context.examYearDataStore.data.map { prefs ->
         ExamYearConfig(
@@ -78,7 +80,8 @@ class ExamYearPreferences(private val context: Context) {
             backupTreeUri = prefs[backupTreeUriKey] ?: "",
             lastBackupTimestamp = prefs[lastBackupTimestampKey] ?: 0L,
             lastBackupDeckCount = prefs[lastBackupDeckCountKey] ?: 0,
-            hasDismissedFreshRestorePrompt = prefs[dismissedFreshRestoreKey] ?: false
+            hasDismissedFreshRestorePrompt = prefs[dismissedFreshRestoreKey] ?: false,
+            lastGeneratedMcqType = prefs[lastGeneratedMcqTypeKey] ?: ""
         )
     }
 
@@ -145,6 +148,12 @@ class ExamYearPreferences(private val context: Context) {
     suspend fun setDismissedFreshRestorePrompt(dismissed: Boolean) {
         context.examYearDataStore.edit { prefs ->
             prefs[dismissedFreshRestoreKey] = dismissed
+        }
+    }
+
+    suspend fun setLastGeneratedMcqType(typeLabel: String) {
+        context.examYearDataStore.edit { prefs ->
+            prefs[lastGeneratedMcqTypeKey] = typeLabel.trim()
         }
     }
 }

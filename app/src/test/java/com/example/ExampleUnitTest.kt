@@ -329,4 +329,73 @@ class ExampleUnitTest {
             LibraryCategory.entries.map { it.label }
         )
     }
+
+    @Test
+    fun mcq_question_types_contain_all_eight_requested_formats() {
+        assertEquals(
+            listOf(
+                "Direct analytical & conceptual MCQs",
+                "3-statement questions.",
+                "4-statement questions.",
+                "Nested 3 and 4 statement type (2026)",
+                "Match the following 2 columns and 3 columns",
+                "Assertion and reasoning, where appropriate.",
+                "Correctly/incorrectly matched pairs.",
+                "Multiple-item identification questions"
+            ),
+            com.example.domain.McqQuestionType.entries.map { it.label }
+        )
+    }
+
+    @Test
+    fun auto_rotate_mcq_type_never_repeats_last_generated_type() {
+        com.example.domain.McqQuestionType.entries.forEach { lastType ->
+            repeat(20) { seed ->
+                val picked = UpscPromptBuilder.pickNextMcqTypeExcluding(
+                    lastGeneratedLabel = lastType.label,
+                    random = kotlin.random.Random(seed)
+                )
+                assertFalse(
+                    "Picked ${picked.label} must differ from last ${lastType.label}",
+                    picked == lastType
+                )
+            }
+        }
+        val blankPick = UpscPromptBuilder.pickNextMcqTypeExcluding("", kotlin.random.Random(1))
+        assertTrue(com.example.domain.McqQuestionType.entries.contains(blankPick))
+    }
+
+    @Test
+    fun nested_3_4_statement_2026_and_custom_mcq_type_inject_into_prompt() {
+        val nestedPrompt = UpscPromptBuilder.buildPrompt(
+            sourceText = "Governor discretionary powers under Article 163.",
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026,
+            questionMode = QuestionMode.MCQ,
+            mcqCount = 3,
+            mains10Count = 0,
+            mains15Count = 0,
+            subjectTag = "Polity",
+            mcqQuestionType = com.example.domain.McqQuestionType.NESTED_3_4_STATEMENT
+        )
+        assertTrue(nestedPrompt.contains("Nested 3 and 4 statement type (2026)"))
+        assertTrue(nestedPrompt.contains("3 or 4 numbered primary statements"))
+        assertTrue(nestedPrompt.contains("3 or 4 numbered inferences"))
+        assertTrue(nestedPrompt.contains("How many of the above inferences are true?"))
+
+        val customPrompt = UpscPromptBuilder.buildPrompt(
+            sourceText = "Governor discretionary powers under Article 163.",
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026,
+            questionMode = QuestionMode.MCQ,
+            mcqCount = 3,
+            mains10Count = 0,
+            mains15Count = 0,
+            subjectTag = "Polity",
+            mcqQuestionType = com.example.domain.McqQuestionType.THREE_STATEMENT,
+            customMcqQuestionType = "Chronological ordering of Constitutional Amendments"
+        )
+        assertTrue(customPrompt.contains("Chronological ordering of Constitutional Amendments"))
+        assertFalse(customPrompt.contains("REQUIRED MCQ QUESTION TYPE: 3-statement questions."))
+    }
 }

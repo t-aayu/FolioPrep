@@ -7,9 +7,9 @@
     <string name="prelims_pattern_label">Prelims Pattern</string>
     <string name="mains_pattern_label">Mains Pattern</string>
     <string name="paste_from_clipboard">Paste from Clipboard</string>
-    <string name="share_to_any_ai">Share to Any AI App</string>
+    <string name="share_to_any_ai">Share to Any App</string>
     <string name="copy_prompt">Copy Prompt</string>
-    <string name="extract_article">Extract Article</string>
+    <string name="extract_article">Import Article</string>
     <string name="pick_images_ocr">Pick Notes / Slides</string>
     <string name="snap_photo_ocr">Snap Textbook Page</string>
     <string name="review_and_import">Review &amp; Import</string>
@@ -18,7 +18,7 @@
     <string name="timed_exam">Timed Exam</string>
     <string name="mains_flashcards">Mains Flashcards</string>
     <string name="empty_library_title">Your UPSC Revision Desk Awaits</string>
-    <string name="empty_library_subtitle">Extract clean text from articles, textbook photos, or notes in Studio, share the year-calibrated prompt to ChatGPT, Gemini, or Claude, and auto-import your offline deck here.</string>
-    <string name="micro_guide_steps">1. Pick your AI app  →  2. Tap Send &amp; Copy reply  →  3. Return here to auto-import</string>
+    <string name="empty_library_subtitle">Add notes, article links, or textbook photos in Studio, open them in ChatGPT, Gemini, or Claude, and save your offline study deck here.</string>
+    <string name="micro_guide_steps">1. Choose your app  →  2. Send &amp; copy the reply  →  3. Return here to save</string>
     <string name="github_repo_url">https://github.com/t-aayu/FolioPrep/</string>
 </resources>

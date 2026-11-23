@@ -89,7 +89,7 @@ class ArticleExtractor {
 
             if (bodyText.length < 60) {
                 throw IllegalStateException(
-                    "Extracted text is too short (the page may be paywalled or require JavaScript). Try copying the text directly."
+                    "Could not extract enough readable text from this link. Try copying the article text directly."
                 )
             }
 

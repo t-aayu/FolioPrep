@@ -94,7 +94,7 @@ fun ExamYearHeaderBar(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Saved permanently · Applied to all AI prompts",
+                            text = "Saved · Applied automatically to new question sets",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -50,10 +50,16 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedFilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
@@ -98,6 +104,8 @@ import com.example.data.AppSettingsConfig
 import com.example.data.ExamYearConfig
 import com.example.domain.ExternalAiLauncher
 import com.example.domain.JsonPayloadParser
+import com.example.domain.McqQuestionType
+import com.example.domain.McqTypeSelection
 import com.example.domain.QuestionDifficulty
 import com.example.domain.QuestionMode
 import com.example.domain.UpscSubjects
@@ -114,7 +122,7 @@ import com.example.viewmodel.InputSourceTab
 import com.example.viewmodel.StudioUiState
 import java.io.File
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun StudioScreen(
     state: StudioUiState,
@@ -132,6 +140,9 @@ fun StudioScreen(
     onSelectSubjectFocus: (String?) -> Unit,
     onSelectQuestionMode: (QuestionMode) -> Unit,
     onSelectDifficulty: (QuestionDifficulty) -> Unit,
+    onSelectMcqTypeOption: (McqTypeSelection) -> Unit,
+    onCustomMcqTypeTextChange: (String) -> Unit,
+    onRotateAutoMcqType: () -> Unit,
     onAdjustMcqCount: (Int) -> Unit,
     onAdjustMains10Count: (Int) -> Unit,
     onAdjustMains15Count: (Int) -> Unit,
@@ -203,7 +214,7 @@ fun StudioScreen(
 
     fun validateBeforeShare(): Boolean {
         if (state.sourceText.isBlank() && !state.isPromptManuallyEdited) {
-            onShowMessage("Add text, extract an article link, or scan notes with OCR first.")
+            onShowMessage("Add text, import an article link, or scan a photo first.")
             return false
         }
         if (state.totalRequestedQuestions <= 0 && !state.isPromptManuallyEdited) {
@@ -233,12 +244,12 @@ fun StudioScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "LOCAL SOURCE STUDIO",
+                                text = "STUDY STUDIO",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "UPSC Prompt Studio",
+                                text = "UPSC Study Studio",
                                 style = MaterialTheme.typography.headlineLarge,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
@@ -256,7 +267,7 @@ fun StudioScreen(
                         }
                     }
                     Text(
-                        text = "Exclusively calibrated for UPSC CSE (Prelims up to ${examYearConfig.latestPrelimsYear}, Mains up to ${examYearConfig.latestMainsYear}).",
+                        text = "Calibrated for UPSC CSE (Prelims up to ${examYearConfig.latestPrelimsYear}, Mains up to ${examYearConfig.latestMainsYear}).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -271,12 +282,12 @@ fun StudioScreen(
                 )
             }
 
-            // STAGE 1: LOCAL EXTRACTION
+            // STAGE 1: ADD STUDY MATERIAL
             item(key = "stage_1_extract") {
                 StudioSectionCard(
                     stepBadge = "STAGE 1",
-                    title = "Extract Source Locally",
-                    subtitle = "Extract clean article prose or scan textbook notes on-device before drafting your prompt."
+                    title = "Add Study Material",
+                    subtitle = "Paste notes, import an article link, or scan textbook pages."
                 ) {
                     SingleChoiceSegmentedButtonRow(
                         modifier = Modifier
@@ -369,7 +380,7 @@ fun StudioScreen(
                                         color = MaterialTheme.colorScheme.onPrimary
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Stripping Ads & Navigation Locally...")
+                                    Text("Loading article...")
                                 } else {
                                     Icon(Icons.Outlined.Link, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -416,7 +427,7 @@ fun StudioScreen(
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Running on-device ML Kit OCR...",
+                                    text = "Reading text from photo...",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -506,9 +517,9 @@ fun StudioScreen(
                     OutlinedTextField(
                         value = state.sourceText,
                         onValueChange = onSourceTextChange,
-                        label = { Text("Extracted Source Text (Editable)") },
+                        label = { Text("Study Notes (Editable)") },
                         placeholder = {
-                            Text("Paste notes, extract an editorial link, or scan textbook pages above...")
+                            Text("Paste notes, import an article link, scan a photo, or share selected text from any app...")
                         },
                         minLines = 5,
                         maxLines = 9,
@@ -575,7 +586,7 @@ fun StudioScreen(
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 Text(
-                                    text = "Long source auto-chunked (${state.chunks.size} safe ~2,500-word parts to avoid AI app truncation):",
+                                    text = "Long notes split into ${state.chunks.size} parts:",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
@@ -588,12 +599,28 @@ fun StudioScreen(
                                         FilterChip(
                                             selected = state.selectedChunkIndex == chunk.index,
                                             onClick = { onSelectChunk(chunk.index) },
-                                            label = { Text("Chunk ${chunk.index + 1} (${chunk.wordCount}w)") },
+                                            label = { Text("Part ${chunk.index + 1} (${chunk.wordCount}w)") },
                                             modifier = Modifier.testTag("chunk_chip_${chunk.index}")
                                         )
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    AnimatedVisibility(visible = state.questionMode != QuestionMode.SUBJECTIVE) {
+                        Column(modifier = Modifier.padding(top = 14.dp)) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            McqQuestionTypeSelector(
+                                selection = state.mcqTypeSelection,
+                                autoPickedType = state.autoPickedMcqType,
+                                customTypeText = state.customMcqTypeText,
+                                lastGeneratedMcqType = appSettings.lastGeneratedMcqType,
+                                onSelectOption = onSelectMcqTypeOption,
+                                onCustomTextChange = onCustomMcqTypeTextChange,
+                                onRotateAutoType = onRotateAutoMcqType
+                            )
                         }
                     }
                 }
@@ -603,8 +630,8 @@ fun StudioScreen(
             item(key = "stage_2_configure") {
                 StudioSectionCard(
                     stepBadge = "STAGE 2",
-                    title = "Configure & Edit UPSC Prompt",
-                    subtitle = "Choose Prelims MCQs, Mains 10/15-markers, or both, then inspect or edit the prompt."
+                    title = "Configure Question Set",
+                    subtitle = "Choose Prelims MCQs, Mains 10/15-markers, or both, then review if needed."
                 ) {
                     Text(
                         text = "Question Format",
@@ -661,7 +688,7 @@ fun StudioScreen(
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "${state.selectedDifficulty.label}: ${state.selectedDifficulty.description} (AI also tags each MCQ's hardness in JSON for targeted revision.)",
+                        text = "${state.selectedDifficulty.label}: ${state.selectedDifficulty.description}.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -837,9 +864,9 @@ fun StudioScreen(
                     }
                     Text(
                         text = if (promptLen > 16000) {
-                            "$promptLen chars · Long for some AI apps—consider Copy Prompt or picking a smaller chunk."
+                            "$promptLen chars · Very long — consider copying or picking a shorter part."
                         } else {
-                            "$promptLen chars · Safe for Android Sharesheet & direct AI app sharing"
+                            "$promptLen chars · Ready to share"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = lengthStatusColor
@@ -847,12 +874,12 @@ fun StudioScreen(
                 }
             }
 
-            // STAGE 3: DISPATCH & AUTO-IMPORT
+            // STAGE 3: SEND & IMPORT
             item(key = "stage_3_dispatch") {
                 StudioSectionCard(
                     stepBadge = "STAGE 3",
-                    title = "Generate with External AI",
-                    subtitle = "Use ChatGPT, Gemini, Claude, or Perplexity installed on your device."
+                    title = "Generate Questions",
+                    subtitle = "Open in ChatGPT, Gemini, Claude, or Perplexity."
                 ) {
                     Surface(
                         shape = MaterialTheme.shapes.medium,
@@ -880,7 +907,7 @@ fun StudioScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Quick Send to AI",
+                        text = "Open In",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -919,7 +946,7 @@ fun StudioScreen(
                                             prompt = state.promptText
                                         )
                                     } else {
-                                        onShowMessage("ChatGPT not detected — opening Android Share sheet")
+                                        onShowMessage("Opening share menu for ChatGPT")
                                         ExternalAiLauncher.sharePromptViaChooser(context, state.promptText)
                                     }
                                 }
@@ -943,7 +970,7 @@ fun StudioScreen(
                                             prompt = state.promptText
                                         )
                                     } else {
-                                        onShowMessage("Gemini not detected — opening Android Share sheet")
+                                        onShowMessage("Opening share menu for Gemini")
                                         ExternalAiLauncher.sharePromptViaChooser(context, state.promptText)
                                     }
                                 }
@@ -1020,7 +1047,7 @@ fun StudioScreen(
                                 if (validateBeforeShare()) {
                                     ExternalAiLauncher.copyPromptToClipboard(context, state.promptText)
                                     onMarkAwaitingAiReturn()
-                                    onShowMessage("Prompt copied! Paste in your AI app, copy the JSON reply, then return here.")
+                                    onShowMessage("Copied! Paste it in your chosen app, copy the reply, then return here.")
                                 }
                             },
                             modifier = Modifier
@@ -1065,7 +1092,7 @@ fun StudioScreen(
                                 modifier = Modifier.size(15.dp)
                             )
                             Text(
-                                text = "Listening for JSON reply on return — copy the AI output and switch back.",
+                                text = "Waiting for reply — copy the generated questions and return here.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -1270,6 +1297,190 @@ private fun FeaturedAiPillButton(
                 tint = contentColor,
                 modifier = Modifier.size(18.dp)
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun McqQuestionTypeSelector(
+    selection: McqTypeSelection,
+    autoPickedType: McqQuestionType,
+    customTypeText: String,
+    lastGeneratedMcqType: String,
+    onSelectOption: (McqTypeSelection) -> Unit,
+    onCustomTextChange: (String) -> Unit,
+    onRotateAutoType: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val selectedLabel = when (selection) {
+        McqTypeSelection.AutoRotate -> "Auto (Different from last) · ${autoPickedType.label}"
+        is McqTypeSelection.Preset -> selection.type.label
+        McqTypeSelection.Custom -> "Custom (Write your own)"
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "MCQ Question Type",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (selection is McqTypeSelection.AutoRotate) {
+                TextButton(
+                    onClick = onRotateAutoType,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.testTag("rotate_auto_mcq_type_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Shuffle,
+                        contentDescription = "Pick another MCQ question type",
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Switch Type", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            OutlinedTextField(
+                value = selectedLabel,
+                onValueChange = {},
+                readOnly = true,
+                singleLine = true,
+                label = { Text("Select Prelims MCQ style") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
+                    .testTag("mcq_question_type_dropdown")
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                text = "Auto (Different from last)",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                            Text(
+                                text = "Default · Avoids repeating your last MCQ type",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSelectOption(McqTypeSelection.AutoRotate)
+                        expanded = false
+                    },
+                    modifier = Modifier.testTag("mcq_type_option_auto")
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                McqQuestionType.entries.forEach { type ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(
+                                    text = type.label,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = type.shortDescription,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        onClick = {
+                            onSelectOption(McqTypeSelection.Preset(type))
+                            expanded = false
+                        },
+                        modifier = Modifier.testTag("mcq_type_option_${type.name.lowercase()}")
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                text = "Custom (Write your own)",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                            Text(
+                                text = "Enter your own Prelims MCQ pattern below",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSelectOption(McqTypeSelection.Custom)
+                        expanded = false
+                    },
+                    modifier = Modifier.testTag("mcq_type_option_custom")
+                )
+            }
+        }
+
+        when (selection) {
+            McqTypeSelection.AutoRotate -> {
+                val lastSuffix = if (lastGeneratedMcqType.isNotBlank()) {
+                    " · Last: $lastGeneratedMcqType"
+                } else {
+                    ""
+                }
+                Text(
+                    text = "${autoPickedType.shortDescription}$lastSuffix",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            is McqTypeSelection.Preset -> {
+                Text(
+                    text = selection.type.shortDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            McqTypeSelection.Custom -> {
+                OutlinedTextField(
+                    value = customTypeText,
+                    onValueChange = onCustomTextChange,
+                    label = { Text("Custom MCQ Question Type") },
+                    placeholder = {
+                        Text("e.g., Chronological ordering of events, Map-based pair matching...")
+                    },
+                    singleLine = false,
+                    maxLines = 3,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("custom_mcq_type_input")
+                )
+            }
         }
     }
 }

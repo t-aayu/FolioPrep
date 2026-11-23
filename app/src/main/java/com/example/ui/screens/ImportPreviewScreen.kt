@@ -260,7 +260,7 @@ fun ImportPreviewScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Parser Notes",
+                                        text = "Import Notes",
                                         style = MaterialTheme.typography.titleSmall,
                                         color = MaterialTheme.colorScheme.onTertiaryContainer
                                     )
