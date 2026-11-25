@@ -111,8 +111,10 @@ data class LibraryFilterState(
 )
 
 data class QuickAskUiState(
+    val isSheetOpen: Boolean = false,
     val keywords: String = "",
     val questionType: QuickAskQuestionType = QuickAskQuestionType.MCQ,
+    val difficulty: QuestionDifficulty = QuestionDifficulty.MEDIUM,
     val questionCount: Int = 1,
     val awaitingReply: Boolean = false
 )
@@ -771,6 +773,14 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
 
     // --- Homepage Quick Ask AI ---
 
+    fun openQuickAskSheet() {
+        _quickAskState.update { it.copy(isSheetOpen = true) }
+    }
+
+    fun closeQuickAskSheet() {
+        _quickAskState.update { it.copy(isSheetOpen = false) }
+    }
+
     fun updateQuickAskKeywords(keywords: String) {
         _quickAskState.update { it.copy(keywords = keywords) }
     }
@@ -783,6 +793,10 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                 questionCount = current.questionCount.coerceIn(1, maxCount)
             )
         }
+    }
+
+    fun selectQuickAskDifficulty(difficulty: QuestionDifficulty) {
+        _quickAskState.update { it.copy(difficulty = difficulty) }
     }
 
     fun adjustQuickAskCount(delta: Int) {
@@ -814,6 +828,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
             questionCount = quick.questionCount,
             latestPrelimsYear = years.latestPrelimsYear,
             latestMainsYear = years.latestMainsYear,
+            difficulty = quick.difficulty,
             mcqQuestionType = pickedMcqType,
             useCustomSkill = settings.useCustomSkill,
             customSkillText = settings.customSkillText
@@ -918,7 +933,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                 val parsed = JsonPayloadParser.parse(
                     rawInput = raw,
                     fallbackTitle = fallbackTitle,
-                    defaultDifficulty = if (lastDispatchFromQuickAsk) QuestionDifficulty.MEDIUM else state.selectedDifficulty
+                    defaultDifficulty = if (lastDispatchFromQuickAsk) _quickAskState.value.difficulty else state.selectedDifficulty
                 ).getOrNull() ?: return
 
                 _quickAskState.update { it.copy(awaitingReply = false) }
@@ -944,7 +959,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
     fun openDetectedClipboardForPreview(): Boolean {
         val detected = _studioState.value.detectedClipboardBanner ?: return false
         val enriched = if (lastDispatchFromQuickAsk) detected else enrichTagsWithSelectedFocus(detected)
-        _quickAskState.update { it.copy(awaitingReply = false) }
+        _quickAskState.update { it.copy(awaitingReply = false, isSheetOpen = false) }
         _studioState.update {
             it.copy(
                 draftImport = enriched,
@@ -969,7 +984,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         val result = JsonPayloadParser.parse(
             rawInput = rawText,
             fallbackTitle = fallbackTitle,
-            defaultDifficulty = if (useQuickAskContext) QuestionDifficulty.MEDIUM else state.selectedDifficulty
+            defaultDifficulty = if (useQuickAskContext) _quickAskState.value.difficulty else state.selectedDifficulty
         )
         return result.fold(
             onSuccess = { parsed ->
@@ -977,7 +992,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                     lastDispatchFromQuickAsk = true
                 }
                 val enriched = if (useQuickAskContext) parsed else enrichTagsWithSelectedFocus(parsed)
-                _quickAskState.update { it.copy(awaitingReply = false) }
+                _quickAskState.update { it.copy(awaitingReply = false, isSheetOpen = false) }
                 _studioState.update {
                     it.copy(
                         draftImport = enriched,

@@ -407,10 +407,13 @@ class ExampleUnitTest {
             questionCount = 1,
             latestPrelimsYear = 2026,
             latestMainsYear = 2026,
+            difficulty = com.example.domain.QuestionDifficulty.HARD,
             mcqQuestionType = com.example.domain.McqQuestionType.THREE_STATEMENT
         )
         assertTrue(mcqPrompt.startsWith("# SKILL: UPSC CSE PRELIMS"))
         assertTrue(mcqPrompt.contains("Total MCQs required: 1"))
+        assertTrue(mcqPrompt.contains("TARGET HARDNESS / DIFFICULTY LEVEL: Hard"))
+        assertTrue(mcqPrompt.contains("\"difficulty\": \"Hard\""))
         assertTrue(mcqPrompt.contains("TOPIC KEYWORDS: Article 356, Sarkaria Commission, President's Rule"))
         assertTrue(mcqPrompt.contains("```json"))
         assertTrue(mcqPrompt.contains("\"mcqs\":"))
@@ -421,10 +424,12 @@ class ExampleUnitTest {
             questionType = com.example.domain.QuickAskQuestionType.MAINS_10,
             questionCount = 2,
             latestPrelimsYear = 2026,
-            latestMainsYear = 2026
+            latestMainsYear = 2026,
+            difficulty = com.example.domain.QuestionDifficulty.EASY
         )
         assertTrue(mains10Prompt.startsWith("# SKILL: UPSC CSE MAINS"))
         assertTrue(mains10Prompt.contains("2 question(s) of 10 Marks / 150 Words and 0 question(s) of 15 Marks / 250 Words"))
+        assertTrue(mains10Prompt.contains("TARGET HARDNESS / DIFFICULTY LEVEL: Easy"))
         assertTrue(mains10Prompt.contains("TOPIC KEYWORDS: Fiscal federalism, 16th Finance Commission"))
         assertTrue(mains10Prompt.contains("\"subjective\":"))
         assertFalse(mains10Prompt.contains("\"mcqs\":"))
@@ -438,6 +443,7 @@ class ExampleUnitTest {
         )
         assertTrue(mains15Prompt.startsWith("# SKILL: UPSC CSE MAINS"))
         assertTrue(mains15Prompt.contains("0 question(s) of 10 Marks / 150 Words and 1 question(s) of 15 Marks / 250 Words"))
+        assertTrue(mains15Prompt.contains("TARGET HARDNESS / DIFFICULTY LEVEL: Medium"))
         assertTrue(mains15Prompt.contains("TOPIC KEYWORDS: Ramsar wetlands, mangrove restoration"))
         assertTrue(mains15Prompt.contains("\"subjective\":"))
         assertFalse(mains15Prompt.contains("\"mcqs\":"))

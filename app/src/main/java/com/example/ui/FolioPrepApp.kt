@@ -11,11 +11,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -180,15 +180,20 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                 }
             },
             floatingActionButton = {
-                if (currentRoute == Routes.LIBRARY && allDecks.isNotEmpty()) {
-                    FloatingActionButton(
-                        onClick = { navigateToTopLevel(Routes.STUDIO) },
+                if (currentRoute == Routes.LIBRARY) {
+                    ExtendedFloatingActionButton(
+                        onClick = { viewModel.openQuickAskSheet() },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Outlined.AutoAwesome,
+                                contentDescription = "Open Quick Ask AI"
+                            )
+                        },
+                        text = { Text("Quick Ask AI") },
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.testTag("fab_new_prompt")
-                    ) {
-                        Icon(Icons.Outlined.Add, contentDescription = "Create New UPSC Prompt")
-                    }
+                        modifier = Modifier.testTag("quick_ask_ai_fab")
+                    )
                 }
             }
         ) { innerPadding ->
@@ -261,8 +266,10 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 quickAskState = quickAskState,
                                 installedAiApps = studioState.installedAiApps,
                                 onRefreshInstalledApps = viewModel::refreshInstalledAiApps,
+                                onDismissQuickAskSheet = viewModel::closeQuickAskSheet,
                                 onQuickAskKeywordsChange = viewModel::updateQuickAskKeywords,
                                 onQuickAskTypeChange = viewModel::selectQuickAskType,
+                                onQuickAskDifficultyChange = viewModel::selectQuickAskDifficulty,
                                 onQuickAskCountAdjust = viewModel::adjustQuickAskCount,
                                 onPrepareQuickAskPrompt = viewModel::prepareQuickAskPrompt,
                                 onShowMessage = viewModel::showToast,

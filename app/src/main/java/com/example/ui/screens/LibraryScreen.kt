@@ -86,7 +86,7 @@ import com.example.ui.components.ClipboardAutoImportBanner
 import com.example.ui.components.ExamYearHeaderBar
 import com.example.ui.components.ManualJsonPasteDialog
 import com.example.ui.components.OpenBackupDocumentContract
-import com.example.ui.components.QuickAskAiCard
+import com.example.ui.components.QuickAskAiBottomSheet
 import com.example.viewmodel.LibraryCategory
 import com.example.viewmodel.LibraryFilterState
 import com.example.viewmodel.QuickAskUiState
@@ -110,8 +110,10 @@ fun LibraryScreen(
     quickAskState: QuickAskUiState,
     installedAiApps: List<InstalledAiApp>,
     onRefreshInstalledApps: () -> Unit,
+    onDismissQuickAskSheet: () -> Unit,
     onQuickAskKeywordsChange: (String) -> Unit,
     onQuickAskTypeChange: (QuickAskQuestionType) -> Unit,
+    onQuickAskDifficultyChange: (QuestionDifficulty) -> Unit,
     onQuickAskCountAdjust: (Int) -> Unit,
     onPrepareQuickAskPrompt: () -> String?,
     onShowMessage: (String) -> Unit,
@@ -232,19 +234,6 @@ fun LibraryScreen(
                     detectedPayload = detectedClipboard,
                     onReviewAndImport = onReviewClipboardBanner,
                     onDismiss = onDismissClipboardBanner
-                )
-            }
-
-            item(key = "quick_ask_ai") {
-                QuickAskAiCard(
-                    state = quickAskState,
-                    installedAiApps = installedAiApps,
-                    onKeywordsChange = onQuickAskKeywordsChange,
-                    onSelectQuestionType = onQuickAskTypeChange,
-                    onAdjustCount = onQuickAskCountAdjust,
-                    onPreparePrompt = onPrepareQuickAskPrompt,
-                    onPasteClick = { handlePasteReply(fromQuickAsk = true) },
-                    onShowMessage = onShowMessage
                 )
             }
 
@@ -442,6 +431,23 @@ fun LibraryScreen(
                 Spacer(modifier = Modifier.height(72.dp))
             }
         }
+    }
+
+    if (quickAskState.isSheetOpen) {
+        QuickAskAiBottomSheet(
+            state = quickAskState,
+            installedAiApps = installedAiApps,
+            detectedClipboard = detectedClipboard,
+            onDismiss = onDismissQuickAskSheet,
+            onKeywordsChange = onQuickAskKeywordsChange,
+            onSelectQuestionType = onQuickAskTypeChange,
+            onSelectDifficulty = onQuickAskDifficultyChange,
+            onAdjustCount = onQuickAskCountAdjust,
+            onPreparePrompt = onPrepareQuickAskPrompt,
+            onPasteClick = { handlePasteReply(fromQuickAsk = true) },
+            onReviewClipboardBanner = onReviewClipboardBanner,
+            onShowMessage = onShowMessage
+        )
     }
 
     if (showPasteDialog) {
