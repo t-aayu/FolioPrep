@@ -398,4 +398,48 @@ class ExampleUnitTest {
         assertTrue(customPrompt.contains("Chronological ordering of Constitutional Amendments"))
         assertFalse(customPrompt.contains("REQUIRED MCQ QUESTION TYPE: 3-statement questions."))
     }
+
+    @Test
+    fun quick_ask_prompt_generates_single_mode_mcq_or_mains_with_default_count_and_json_schema() {
+        val mcqPrompt = UpscPromptBuilder.buildQuickAskPrompt(
+            keywords = "Article 356, Sarkaria Commission, President's Rule",
+            questionType = com.example.domain.QuickAskQuestionType.MCQ,
+            questionCount = 1,
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026,
+            mcqQuestionType = com.example.domain.McqQuestionType.THREE_STATEMENT
+        )
+        assertTrue(mcqPrompt.startsWith("# SKILL: UPSC CSE PRELIMS"))
+        assertTrue(mcqPrompt.contains("Total MCQs required: 1"))
+        assertTrue(mcqPrompt.contains("TOPIC KEYWORDS: Article 356, Sarkaria Commission, President's Rule"))
+        assertTrue(mcqPrompt.contains("```json"))
+        assertTrue(mcqPrompt.contains("\"mcqs\":"))
+        assertFalse(mcqPrompt.contains("\"subjective\":"))
+
+        val mains10Prompt = UpscPromptBuilder.buildQuickAskPrompt(
+            keywords = "Fiscal federalism, 16th Finance Commission",
+            questionType = com.example.domain.QuickAskQuestionType.MAINS_10,
+            questionCount = 2,
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026
+        )
+        assertTrue(mains10Prompt.startsWith("# SKILL: UPSC CSE MAINS"))
+        assertTrue(mains10Prompt.contains("2 question(s) of 10 Marks / 150 Words and 0 question(s) of 15 Marks / 250 Words"))
+        assertTrue(mains10Prompt.contains("TOPIC KEYWORDS: Fiscal federalism, 16th Finance Commission"))
+        assertTrue(mains10Prompt.contains("\"subjective\":"))
+        assertFalse(mains10Prompt.contains("\"mcqs\":"))
+
+        val mains15Prompt = UpscPromptBuilder.buildQuickAskPrompt(
+            keywords = "Ramsar wetlands, mangrove restoration",
+            questionType = com.example.domain.QuickAskQuestionType.MAINS_15,
+            questionCount = 1,
+            latestPrelimsYear = 2026,
+            latestMainsYear = 2026
+        )
+        assertTrue(mains15Prompt.startsWith("# SKILL: UPSC CSE MAINS"))
+        assertTrue(mains15Prompt.contains("0 question(s) of 10 Marks / 150 Words and 1 question(s) of 15 Marks / 250 Words"))
+        assertTrue(mains15Prompt.contains("TOPIC KEYWORDS: Ramsar wetlands, mangrove restoration"))
+        assertTrue(mains15Prompt.contains("\"subjective\":"))
+        assertFalse(mains15Prompt.contains("\"mcqs\":"))
+    }
 }

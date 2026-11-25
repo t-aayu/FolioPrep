@@ -33,6 +33,7 @@ import com.example.domain.OcrExtractor
 import com.example.domain.ParsedStudyPayload
 import com.example.domain.QuestionDifficulty
 import com.example.domain.QuestionMode
+import com.example.domain.QuickAskQuestionType
 import com.example.domain.TextChunk
 import com.example.domain.TextChunker
 import com.example.domain.UpscPromptBuilder
@@ -107,6 +108,13 @@ data class LibraryFilterState(
     val selectedCategory: LibraryCategory = LibraryCategory.ALL,
     val searchQuery: String = "",
     val selectedTag: String? = null
+)
+
+data class QuickAskUiState(
+    val keywords: String = "",
+    val questionType: QuickAskQuestionType = QuickAskQuestionType.MCQ,
+    val questionCount: Int = 1,
+    val awaitingReply: Boolean = false
 )
 
 class FolioPrepViewModel(application: Application) : AndroidViewModel(application) {
@@ -230,6 +238,10 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
     )
     val studioState: StateFlow<StudioUiState> = _studioState.asStateFlow()
 
+    private val _quickAskState = MutableStateFlow(QuickAskUiState())
+    val quickAskState: StateFlow<QuickAskUiState> = _quickAskState.asStateFlow()
+
+    private var lastDispatchFromQuickAsk = false
     private var hasInitializedAutoMcqType = false
 
     init {
@@ -757,9 +769,72 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         showToast("Prompt synced with UPSC CSE ${years.latestPrelimsYear}/${years.latestMainsYear} template")
     }
 
+    // --- Homepage Quick Ask AI ---
+
+    fun updateQuickAskKeywords(keywords: String) {
+        _quickAskState.update { it.copy(keywords = keywords) }
+    }
+
+    fun selectQuickAskType(type: QuickAskQuestionType) {
+        _quickAskState.update { current ->
+            val maxCount = if (type == QuickAskQuestionType.MCQ) 20 else 10
+            current.copy(
+                questionType = type,
+                questionCount = current.questionCount.coerceIn(1, maxCount)
+            )
+        }
+    }
+
+    fun adjustQuickAskCount(delta: Int) {
+        _quickAskState.update { current ->
+            val maxCount = if (current.questionType == QuickAskQuestionType.MCQ) 20 else 10
+            current.copy(questionCount = (current.questionCount + delta).coerceIn(1, maxCount))
+        }
+    }
+
+    fun prepareQuickAskPrompt(): String? {
+        val quick = _quickAskState.value
+        val cleanedKeywords = quick.keywords.trim()
+        if (cleanedKeywords.isEmpty()) {
+            showToast("Enter a few topic keywords first.")
+            return null
+        }
+
+        val years = examYearConfig.value
+        val settings = appSettings.value
+        val pickedMcqType = if (quick.questionType == QuickAskQuestionType.MCQ) {
+            _studioState.value.autoPickedMcqType
+        } else {
+            null
+        }
+
+        val prompt = UpscPromptBuilder.buildQuickAskPrompt(
+            keywords = cleanedKeywords,
+            questionType = quick.questionType,
+            questionCount = quick.questionCount,
+            latestPrelimsYear = years.latestPrelimsYear,
+            latestMainsYear = years.latestMainsYear,
+            mcqQuestionType = pickedMcqType,
+            useCustomSkill = settings.useCustomSkill,
+            customSkillText = settings.customSkillText
+        )
+
+        if (pickedMcqType != null) {
+            viewModelScope.launch {
+                repository.updateLastGeneratedMcqType(pickedMcqType.label)
+            }
+        }
+
+        lastDispatchFromQuickAsk = true
+        _quickAskState.update { it.copy(awaitingReply = true) }
+        _studioState.update { it.copy(pendingAiImport = true, importErrorMessage = null) }
+        return prompt
+    }
+
     // --- Stage 2 & 3: Share & Clipboard Auto-Import ---
 
     fun markAwaitingAiReturn() {
+        lastDispatchFromQuickAsk = false
         val state = _studioState.value
         if (state.questionMode != QuestionMode.SUBJECTIVE) {
             val usedLabel = resolvedMcqTypeLabelForHistory(state)
@@ -769,6 +844,7 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
+        _quickAskState.update { it.copy(awaitingReply = false) }
         _studioState.update { it.copy(pendingAiImport = true, importErrorMessage = null) }
     }
 
@@ -831,15 +907,21 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
             val hash = raw.hashCode()
             if (hash == state.lastIgnoredClipboardHash) return
             if (JsonPayloadParser.looksLikeStudyPayload(raw)) {
-                val fallbackTitle = state.detectedSourceTitle.ifBlank {
-                    state.selectedSubjectFocus?.let { "UPSC $it Set" } ?: "UPSC CSE Set"
+                val quickKeywords = _quickAskState.value.keywords.trim()
+                val fallbackTitle = if (lastDispatchFromQuickAsk && quickKeywords.isNotBlank()) {
+                    quickKeywords.take(80)
+                } else {
+                    state.detectedSourceTitle.ifBlank {
+                        state.selectedSubjectFocus?.let { "UPSC $it Set" } ?: "UPSC CSE Set"
+                    }
                 }
                 val parsed = JsonPayloadParser.parse(
                     rawInput = raw,
                     fallbackTitle = fallbackTitle,
-                    defaultDifficulty = state.selectedDifficulty
+                    defaultDifficulty = if (lastDispatchFromQuickAsk) QuestionDifficulty.MEDIUM else state.selectedDifficulty
                 ).getOrNull() ?: return
 
+                _quickAskState.update { it.copy(awaitingReply = false) }
                 _studioState.update {
                     it.copy(
                         pendingAiImport = false,
@@ -861,7 +943,8 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun openDetectedClipboardForPreview(): Boolean {
         val detected = _studioState.value.detectedClipboardBanner ?: return false
-        val enriched = enrichTagsWithSelectedFocus(detected)
+        val enriched = if (lastDispatchFromQuickAsk) detected else enrichTagsWithSelectedFocus(detected)
+        _quickAskState.update { it.copy(awaitingReply = false) }
         _studioState.update {
             it.copy(
                 draftImport = enriched,
@@ -872,19 +955,29 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
         return true
     }
 
-    fun parseAndOpenManualPayload(rawText: String): Boolean {
+    fun parseAndOpenManualPayload(rawText: String, fromQuickAsk: Boolean = false): Boolean {
         val state = _studioState.value
-        val fallbackTitle = state.detectedSourceTitle.ifBlank {
-            state.selectedSubjectFocus?.let { "UPSC $it Set" } ?: "UPSC CSE Set"
+        val useQuickAskContext = fromQuickAsk || lastDispatchFromQuickAsk
+        val quickKeywords = _quickAskState.value.keywords.trim()
+        val fallbackTitle = if (useQuickAskContext && quickKeywords.isNotBlank()) {
+            quickKeywords.take(80)
+        } else {
+            state.detectedSourceTitle.ifBlank {
+                state.selectedSubjectFocus?.let { "UPSC $it Set" } ?: "UPSC CSE Set"
+            }
         }
         val result = JsonPayloadParser.parse(
             rawInput = rawText,
             fallbackTitle = fallbackTitle,
-            defaultDifficulty = state.selectedDifficulty
+            defaultDifficulty = if (useQuickAskContext) QuestionDifficulty.MEDIUM else state.selectedDifficulty
         )
         return result.fold(
             onSuccess = { parsed ->
-                val enriched = enrichTagsWithSelectedFocus(parsed)
+                if (fromQuickAsk) {
+                    lastDispatchFromQuickAsk = true
+                }
+                val enriched = if (useQuickAskContext) parsed else enrichTagsWithSelectedFocus(parsed)
+                _quickAskState.update { it.copy(awaitingReply = false) }
                 _studioState.update {
                     it.copy(
                         draftImport = enriched,
@@ -987,8 +1080,11 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         val years = examYearConfig.value
+        val quick = _quickAskState.value
+        val fromQuickAsk = lastDispatchFromQuickAsk
         val finalTags = draft.tags.ifEmpty {
-            listOfNotNull(state.selectedSubjectFocus).ifEmpty { listOf("Current Affairs") }
+            if (fromQuickAsk) listOf("Current Affairs")
+            else listOfNotNull(state.selectedSubjectFocus).ifEmpty { listOf("Current Affairs") }
         }
 
         viewModelScope.launch {
@@ -998,8 +1094,12 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                 prelimsYear = years.latestPrelimsYear,
                 mainsYear = years.latestMainsYear,
                 tagsSerialized = serializeTags(finalTags),
-                sourceType = state.inputTab.name,
-                sourceSnippet = state.sourceText.trim().take(240)
+                sourceType = if (fromQuickAsk) InputSourceTab.TEXT.name else state.inputTab.name,
+                sourceSnippet = if (fromQuickAsk) {
+                    quick.keywords.trim().take(240)
+                } else {
+                    state.sourceText.trim().take(240)
+                }
             )
             val mcqEntities = draft.mcqs.mapIndexed { index, item ->
                 val opts = item.options + List((4 - item.options.size).coerceAtLeast(0)) { "" }
@@ -1029,10 +1129,11 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
                 )
             }
             val savedId = repository.saveDeck(deckEntity, mcqEntities, subjectiveEntities)
-            val usedLabel = if (mcqEntities.isNotEmpty() || state.questionMode != QuestionMode.SUBJECTIVE) {
-                resolvedMcqTypeLabelForHistory(state)
-            } else {
-                ""
+            val usedLabel = when {
+                fromQuickAsk && mcqEntities.isNotEmpty() -> state.autoPickedMcqType.label
+                !fromQuickAsk && (mcqEntities.isNotEmpty() || state.questionMode != QuestionMode.SUBJECTIVE) ->
+                    resolvedMcqTypeLabelForHistory(state)
+                else -> ""
             }
             if (usedLabel.isNotBlank()) {
                 repository.updateLastGeneratedMcqType(usedLabel)
@@ -1040,6 +1141,8 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
             val nextAutoType = UpscPromptBuilder.pickNextMcqTypeExcluding(
                 usedLabel.ifBlank { appSettings.value.lastGeneratedMcqType }
             )
+            lastDispatchFromQuickAsk = false
+            _quickAskState.update { it.copy(awaitingReply = false) }
             _studioState.update { current ->
                 val cleared = current.copy(
                     draftImport = null,

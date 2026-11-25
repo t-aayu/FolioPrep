@@ -88,6 +88,7 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
     val filterState by viewModel.filterState.collectAsStateWithLifecycle()
     val availableTags by viewModel.availableLibraryTags.collectAsStateWithLifecycle()
     val studioState by viewModel.studioState.collectAsStateWithLifecycle()
+    val quickAskState by viewModel.quickAskState.collectAsStateWithLifecycle()
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: Routes.LIBRARY
@@ -257,6 +258,14 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                 detectedClipboard = studioState.detectedClipboardBanner,
                                 importErrorMessage = studioState.importErrorMessage,
                                 showFreshRestorePrompt = showFreshRestorePrompt,
+                                quickAskState = quickAskState,
+                                installedAiApps = studioState.installedAiApps,
+                                onRefreshInstalledApps = viewModel::refreshInstalledAiApps,
+                                onQuickAskKeywordsChange = viewModel::updateQuickAskKeywords,
+                                onQuickAskTypeChange = viewModel::selectQuickAskType,
+                                onQuickAskCountAdjust = viewModel::adjustQuickAskCount,
+                                onPrepareQuickAskPrompt = viewModel::prepareQuickAskPrompt,
+                                onShowMessage = viewModel::showToast,
                                 onUpdatePrelimsYear = viewModel::updatePrelimsYear,
                                 onUpdateMainsYear = viewModel::updateMainsYear,
                                 onCategorySelected = viewModel::onCategorySelected,
@@ -276,8 +285,10 @@ fun FolioPrepApp(viewModel: FolioPrepViewModel) {
                                     openImportPreviewIfReady(viewModel.openDetectedClipboardForPreview())
                                 },
                                 onDismissClipboardBanner = viewModel::dismissClipboardBanner,
-                                onParseManualJson = { raw ->
-                                    openImportPreviewIfReady(viewModel.parseAndOpenManualPayload(raw))
+                                onParseManualJson = { raw, fromQuickAsk ->
+                                    val ok = viewModel.parseAndOpenManualPayload(raw, fromQuickAsk)
+                                    openImportPreviewIfReady(ok)
+                                    ok
                                 },
                                 onClearImportError = viewModel::clearImportError
                             )

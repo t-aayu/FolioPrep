@@ -55,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,14 +77,19 @@ import com.example.data.LocalBackupManager
 import com.example.data.local.DeckSummary
 import com.example.data.local.McqQuestionEntity
 import com.example.domain.ExternalAiLauncher
+import com.example.domain.InstalledAiApp
+import com.example.domain.JsonPayloadParser
 import com.example.domain.ParsedStudyPayload
 import com.example.domain.QuestionDifficulty
+import com.example.domain.QuickAskQuestionType
 import com.example.ui.components.ClipboardAutoImportBanner
 import com.example.ui.components.ExamYearHeaderBar
 import com.example.ui.components.ManualJsonPasteDialog
 import com.example.ui.components.OpenBackupDocumentContract
+import com.example.ui.components.QuickAskAiCard
 import com.example.viewmodel.LibraryCategory
 import com.example.viewmodel.LibraryFilterState
+import com.example.viewmodel.QuickAskUiState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -101,6 +107,14 @@ fun LibraryScreen(
     detectedClipboard: ParsedStudyPayload?,
     importErrorMessage: String?,
     showFreshRestorePrompt: Boolean,
+    quickAskState: QuickAskUiState,
+    installedAiApps: List<InstalledAiApp>,
+    onRefreshInstalledApps: () -> Unit,
+    onQuickAskKeywordsChange: (String) -> Unit,
+    onQuickAskTypeChange: (QuickAskQuestionType) -> Unit,
+    onQuickAskCountAdjust: (Int) -> Unit,
+    onPrepareQuickAskPrompt: () -> String?,
+    onShowMessage: (String) -> Unit,
     onUpdatePrelimsYear: (Int) -> Unit,
     onUpdateMainsYear: (Int) -> Unit,
     onCategorySelected: (LibraryCategory) -> Unit,
@@ -114,12 +128,28 @@ fun LibraryScreen(
     onDismissFreshRestorePrompt: () -> Unit,
     onReviewClipboardBanner: () -> Unit,
     onDismissClipboardBanner: () -> Unit,
-    onParseManualJson: (String) -> Unit,
+    onParseManualJson: (String, Boolean) -> Boolean,
     onClearImportError: () -> Unit
 ) {
     val context = LocalContext.current
     var showPasteDialog by remember { mutableStateOf(false) }
+    var pasteDialogFromQuickAsk by remember { mutableStateOf(false) }
     var pendingDeleteDeck by remember { mutableStateOf<DeckSummary?>(null) }
+
+    LaunchedEffect(Unit) {
+        onRefreshInstalledApps()
+    }
+
+    fun handlePasteReply(fromQuickAsk: Boolean) {
+        val clip = ExternalAiLauncher.readClipboardText(context).orEmpty()
+        if (clip.isNotBlank() && JsonPayloadParser.looksLikeStudyPayload(clip)) {
+            onParseManualJson(clip, fromQuickAsk)
+        } else {
+            onClearImportError()
+            pasteDialogFromQuickAsk = fromQuickAsk
+            showPasteDialog = true
+        }
+    }
 
     val restoreBackupLauncher = rememberLauncherForActivityResult(
         contract = OpenBackupDocumentContract()
@@ -174,15 +204,7 @@ fun LibraryScreen(
                     }
 
                     OutlinedButton(
-                        onClick = {
-                            val clip = ExternalAiLauncher.readClipboardText(context).orEmpty()
-                            if (clip.isNotBlank() && com.example.domain.JsonPayloadParser.looksLikeStudyPayload(clip)) {
-                                onParseManualJson(clip)
-                            } else {
-                                onClearImportError()
-                                showPasteDialog = true
-                            }
-                        },
+                        onClick = { handlePasteReply(fromQuickAsk = false) },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         modifier = Modifier.testTag("library_paste_clipboard_button")
                     ) {
@@ -210,6 +232,19 @@ fun LibraryScreen(
                     detectedPayload = detectedClipboard,
                     onReviewAndImport = onReviewClipboardBanner,
                     onDismiss = onDismissClipboardBanner
+                )
+            }
+
+            item(key = "quick_ask_ai") {
+                QuickAskAiCard(
+                    state = quickAskState,
+                    installedAiApps = installedAiApps,
+                    onKeywordsChange = onQuickAskKeywordsChange,
+                    onSelectQuestionType = onQuickAskTypeChange,
+                    onAdjustCount = onQuickAskCountAdjust,
+                    onPreparePrompt = onPrepareQuickAskPrompt,
+                    onPasteClick = { handlePasteReply(fromQuickAsk = true) },
+                    onShowMessage = onShowMessage
                 )
             }
 
@@ -417,8 +452,9 @@ fun LibraryScreen(
                 onClearImportError()
             },
             onParseJson = { raw ->
-                onParseManualJson(raw)
-                showPasteDialog = false
+                if (onParseManualJson(raw, pasteDialogFromQuickAsk)) {
+                    showPasteDialog = false
+                }
             }
         )
     }

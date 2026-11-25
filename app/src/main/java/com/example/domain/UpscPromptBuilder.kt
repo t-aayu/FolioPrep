@@ -6,6 +6,12 @@ enum class QuestionMode(val label: String) {
     BOTH("Both")
 }
 
+enum class QuickAskQuestionType(val label: String, val helper: String) {
+    MCQ("MCQ", "Prelims MCQs"),
+    MAINS_10("Mains 10M", "10 Marks · 150 words"),
+    MAINS_15("Mains 15M", "15 Marks · 250 words")
+}
+
 enum class QuestionDifficulty(
     val label: String,
     val jsonValue: String,
@@ -152,6 +158,75 @@ object UpscPromptBuilder {
             it.label.equals(last, ignoreCase = true)
         }.ifEmpty { McqQuestionType.entries }
         return candidates[random.nextInt(candidates.size)]
+    }
+
+    fun buildQuickAskPrompt(
+        keywords: String,
+        questionType: QuickAskQuestionType,
+        questionCount: Int,
+        latestPrelimsYear: Int,
+        latestMainsYear: Int,
+        mcqQuestionType: McqQuestionType? = null,
+        useCustomSkill: Boolean = false,
+        customSkillText: String = ""
+    ): String {
+        val safeCount = questionCount.coerceAtLeast(1)
+        val cleanKeywords = keywords.trim()
+        val topicAnchor = if (cleanKeywords.isNotEmpty()) {
+            "TOPIC KEYWORDS: $cleanKeywords"
+        } else {
+            ""
+        }
+
+        return when (questionType) {
+            QuickAskQuestionType.MCQ -> buildPrompt(
+                sourceText = topicAnchor,
+                latestPrelimsYear = latestPrelimsYear,
+                latestMainsYear = latestMainsYear,
+                questionMode = QuestionMode.MCQ,
+                mcqCount = safeCount,
+                mains10Count = 0,
+                mains15Count = 0,
+                subjectTag = null,
+                difficulty = QuestionDifficulty.MEDIUM,
+                mcqQuestionType = mcqQuestionType,
+                customMcqQuestionType = "",
+                useCustomSkill = useCustomSkill,
+                customSkillText = customSkillText
+            )
+
+            QuickAskQuestionType.MAINS_10 -> buildPrompt(
+                sourceText = topicAnchor,
+                latestPrelimsYear = latestPrelimsYear,
+                latestMainsYear = latestMainsYear,
+                questionMode = QuestionMode.SUBJECTIVE,
+                mcqCount = 0,
+                mains10Count = safeCount,
+                mains15Count = 0,
+                subjectTag = null,
+                difficulty = QuestionDifficulty.MEDIUM,
+                mcqQuestionType = null,
+                customMcqQuestionType = "",
+                useCustomSkill = useCustomSkill,
+                customSkillText = customSkillText
+            )
+
+            QuickAskQuestionType.MAINS_15 -> buildPrompt(
+                sourceText = topicAnchor,
+                latestPrelimsYear = latestPrelimsYear,
+                latestMainsYear = latestMainsYear,
+                questionMode = QuestionMode.SUBJECTIVE,
+                mcqCount = 0,
+                mains10Count = 0,
+                mains15Count = safeCount,
+                subjectTag = null,
+                difficulty = QuestionDifficulty.MEDIUM,
+                mcqQuestionType = null,
+                customMcqQuestionType = "",
+                useCustomSkill = useCustomSkill,
+                customSkillText = customSkillText
+            )
+        }
     }
 
     fun buildPrompt(
