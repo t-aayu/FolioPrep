@@ -448,4 +448,100 @@ class ExampleUnitTest {
         assertTrue(mains15Prompt.contains("\"subjective\":"))
         assertFalse(mains15Prompt.contains("\"mcqs\":"))
     }
+
+    @Test
+    fun library_pagination_slices_5_for_subheadings_and_10_for_search_with_prev_next() {
+        val decks = (1..13).map { "Deck $it" }
+
+        assertEquals(5, com.example.domain.LibraryPagination.pageSizeFor(""))
+        assertEquals(5, com.example.domain.LibraryPagination.pageSizeFor("   "))
+        assertEquals(10, com.example.domain.LibraryPagination.pageSizeFor("Polity"))
+
+        // Browse mode: 5 per page
+        val browsePage0 = com.example.domain.LibraryPagination.slice(decks, requestedPage = 0, pageSize = 5)
+        assertEquals(listOf("Deck 1", "Deck 2", "Deck 3", "Deck 4", "Deck 5"), browsePage0.items)
+        assertEquals(1, browsePage0.startItemNumber)
+        assertEquals(5, browsePage0.endItemNumber)
+        assertEquals(3, browsePage0.totalPages)
+        assertFalse(browsePage0.hasPrevious)
+        assertTrue(browsePage0.hasNext)
+        assertEquals(5, browsePage0.nextCount)
+
+        val browsePage1 = com.example.domain.LibraryPagination.slice(decks, requestedPage = 1, pageSize = 5)
+        assertEquals(listOf("Deck 6", "Deck 7", "Deck 8", "Deck 9", "Deck 10"), browsePage1.items)
+        assertEquals(6, browsePage1.startItemNumber)
+        assertEquals(10, browsePage1.endItemNumber)
+        assertTrue(browsePage1.hasPrevious)
+        assertEquals(5, browsePage1.previousCount)
+        assertTrue(browsePage1.hasNext)
+        assertEquals(3, browsePage1.nextCount)
+
+        val browsePage2 = com.example.domain.LibraryPagination.slice(decks, requestedPage = 2, pageSize = 5)
+        assertEquals(listOf("Deck 11", "Deck 12", "Deck 13"), browsePage2.items)
+        assertTrue(browsePage2.hasPrevious)
+        assertEquals(5, browsePage2.previousCount)
+        assertFalse(browsePage2.hasNext)
+        assertEquals(0, browsePage2.nextCount)
+
+        // Out-of-bounds clamping (e.g., after deleting last item on final page)
+        val clamped = com.example.domain.LibraryPagination.slice(decks.take(5), requestedPage = 2, pageSize = 5)
+        assertEquals(0, clamped.pageIndex)
+        assertFalse(clamped.isPaginated)
+
+        // Search mode: 10 per page
+        val searchItems = (1..24).map { "Result $it" }
+        val searchPage0 = com.example.domain.LibraryPagination.slice(searchItems, requestedPage = 0, pageSize = 10)
+        assertEquals(10, searchPage0.items.size)
+        assertEquals("Result 1", searchPage0.items.first())
+        assertEquals("Result 10", searchPage0.items.last())
+        assertFalse(searchPage0.hasPrevious)
+        assertTrue(searchPage0.hasNext)
+        assertEquals(10, searchPage0.nextCount)
+
+        val searchPage1 = com.example.domain.LibraryPagination.slice(searchItems, requestedPage = 1, pageSize = 10)
+        assertEquals(10, searchPage1.items.size)
+        assertEquals("Result 11", searchPage1.items.first())
+        assertEquals("Result 20", searchPage1.items.last())
+        assertTrue(searchPage1.hasPrevious)
+        assertEquals(10, searchPage1.previousCount)
+        assertTrue(searchPage1.hasNext)
+        assertEquals(4, searchPage1.nextCount)
+    }
+
+    @Test
+    fun deck_list_sorts_by_latest_revised_and_unrevised_by_creation_time() {
+        fun sampleDeck(id: Long, createdAt: Long, lastPracticedAt: Long? = null) =
+            com.example.data.local.DeckSummary(
+                id = id,
+                title = "Deck $id",
+                examScope = "UPSC CSE",
+                prelimsYear = 2026,
+                mainsYear = 2026,
+                tagsSerialized = "Polity",
+                sourceType = "TEXT",
+                createdAt = createdAt,
+                lastPracticedAt = lastPracticedAt,
+                mcqCount = 1,
+                subjectiveCount = 0,
+                masteredSubjectiveCount = 0,
+                bestAccuracyPercent = null
+            )
+
+        val unsorted = listOf(
+            sampleDeck(id = 1L, createdAt = 1_000L, lastPracticedAt = 9_999L), // revised latest -> 1st
+            sampleDeck(id = 3L, createdAt = 6_000L, lastPracticedAt = null),   // unrevised newer -> 2nd
+            sampleDeck(id = 2L, createdAt = 2_000L, lastPracticedAt = 5_000L), // revised earlier -> 3rd
+            sampleDeck(id = 4L, createdAt = 3_000L, lastPracticedAt = null)    // unrevised older -> 4th
+        )
+
+        val sorted = unsorted.sortedWith(
+            compareByDescending<com.example.data.local.DeckSummary> { it.lastPracticedAt ?: it.createdAt }
+                .thenByDescending { it.createdAt }
+                .thenByDescending { it.id }
+        )
+
+        assertEquals(listOf(1L, 3L, 2L, 4L), sorted.map { it.id })
+    }
 }
+
+

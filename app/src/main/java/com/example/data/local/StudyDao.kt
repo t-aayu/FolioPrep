@@ -29,7 +29,7 @@ interface StudyDao {
             (SELECT MAX(CAST((a.correct_count * 100.0) / CASE WHEN a.total_questions > 0 THEN a.total_questions ELSE 1 END AS INTEGER))
              FROM quiz_attempts a WHERE a.deck_id = d.id) AS best_accuracy_percent
         FROM study_decks d
-        ORDER BY COALESCE(d.last_practiced_at, d.created_at) DESC
+        ORDER BY COALESCE(d.last_practiced_at, d.created_at) DESC, d.created_at DESC, d.id DESC
         """
     )
     fun observeDeckSummaries(): Flow<List<DeckSummary>>

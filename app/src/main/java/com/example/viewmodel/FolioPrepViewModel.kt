@@ -207,7 +207,11 @@ class FolioPrepViewModel(application: Application) : AndroidViewModel(applicatio
             val matchesTag = filter.selectedTag == null ||
                 deck.tagList().any { it.equals(filter.selectedTag, ignoreCase = true) }
             matchesCategory && matchesQuery && matchesTag
-        }
+        }.sortedWith(
+            compareByDescending<DeckSummary> { it.lastPracticedAt ?: it.createdAt }
+                .thenByDescending { it.createdAt }
+                .thenByDescending { it.id }
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),

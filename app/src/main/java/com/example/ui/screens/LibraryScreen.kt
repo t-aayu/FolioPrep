@@ -23,9 +23,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
@@ -57,8 +60,11 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +85,8 @@ import com.example.data.local.McqQuestionEntity
 import com.example.domain.ExternalAiLauncher
 import com.example.domain.InstalledAiApp
 import com.example.domain.JsonPayloadParser
+import com.example.domain.LibraryPagination
+import com.example.domain.PageSlice
 import com.example.domain.ParsedStudyPayload
 import com.example.domain.QuestionDifficulty
 import com.example.domain.QuickAskQuestionType
@@ -90,6 +98,7 @@ import com.example.ui.components.QuickAskAiBottomSheet
 import com.example.viewmodel.LibraryCategory
 import com.example.viewmodel.LibraryFilterState
 import com.example.viewmodel.QuickAskUiState
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -175,11 +184,42 @@ fun LibraryScreen(
         allMcqs.count { QuestionDifficulty.fromRaw(it.difficulty) == QuestionDifficulty.HARD }
     }
 
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val normalizedSearchQuery = filterState.searchQuery.trim()
+    val isSearchActive = normalizedSearchQuery.isNotEmpty()
+    val pageSize = LibraryPagination.pageSizeFor(normalizedSearchQuery)
+    var currentPage by rememberSaveable(
+        filterState.selectedCategory,
+        filterState.selectedTag,
+        normalizedSearchQuery
+    ) {
+        mutableIntStateOf(0)
+    }
+    val pageSlice = remember(decks, currentPage, pageSize) {
+        LibraryPagination.slice(
+            allItems = decks,
+            requestedPage = currentPage,
+            pageSize = pageSize
+        )
+    }
+    val searchAndTagsItemIndex = 3 +
+        (if (totalDeckCount > 0) 1 else 0) +
+        (if (allMcqs.isNotEmpty() && filterState.selectedCategory != LibraryCategory.MAINS) 1 else 0)
+
+    fun navigateToPage(targetPage: Int) {
+        currentPage = targetPage.coerceIn(0, (pageSlice.totalPages - 1).coerceAtLeast(0))
+        coroutineScope.launch {
+            listState.animateScrollToItem(searchAndTagsItemIndex)
+        }
+    }
+
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 720.dp),
@@ -418,12 +458,54 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                items(items = decks, key = { it.id }) { deck ->
+                if (pageSlice.isPaginated) {
+                    item(key = "pagination_status_header") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val labelPrefix = if (isSearchActive) {
+                                "Search results"
+                            } else if (pageSlice.pageIndex == 0) {
+                                "Latest"
+                            } else {
+                                "Showing"
+                            }
+                            Text(
+                                text = "$labelPrefix ${pageSlice.startItemNumber}–${pageSlice.endItemNumber} of ${pageSlice.totalItems}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.testTag("library_pagination_summary")
+                            )
+                            Text(
+                                text = "Page ${pageSlice.pageIndex + 1} of ${pageSlice.totalPages}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                items(items = pageSlice.items, key = { it.id }) { deck ->
                     EditorialDeckCard(
                         deck = deck,
                         onClick = { onOpenDeck(deck.id) },
                         onRequestDelete = { pendingDeleteDeck = deck }
                     )
+                }
+
+                if (pageSlice.isPaginated) {
+                    item(key = "pagination_controls") {
+                        LibraryPaginationBar(
+                            pageSlice = pageSlice,
+                            isSearchActive = isSearchActive,
+                            onPreviousPage = { navigateToPage(pageSlice.pageIndex - 1) },
+                            onNextPage = { navigateToPage(pageSlice.pageIndex + 1) }
+                        )
+                    }
                 }
             }
 
@@ -889,3 +971,88 @@ private fun MetricBadge(
         }
     }
 }
+
+@Composable
+private fun LibraryPaginationBar(
+    pageSlice: PageSlice<DeckSummary>,
+    isSearchActive: Boolean,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("library_pagination_bar"),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            val noun = if (isSearchActive) "results" else "cards"
+            Text(
+                text = "Showing ${pageSlice.startItemNumber}–${pageSlice.endItemNumber} of ${pageSlice.totalItems} $noun",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (pageSlice.hasPrevious) {
+                    TextButton(
+                        onClick = onPreviousPage,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("library_pagination_previous")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "Previous ${pageSlice.previousCount}",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Previous ${pageSlice.previousCount}",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+
+                if (pageSlice.hasNext) {
+                    TextButton(
+                        onClick = onNextPage,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("library_pagination_next")
+                    ) {
+                        Text(
+                            text = "Load next ${pageSlice.nextCount}",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                            contentDescription = "Load next ${pageSlice.nextCount}",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+            }
+        }
+    }
+}
+
